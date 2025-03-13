@@ -1,9 +1,10 @@
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
+
 device = "cuda"
 # path = "RLHFlow/ArmoRM-Llama3-8B-v0.1"
+cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
 path = cache_dir + "models--RLHFlow--ArmoRM-Llama3-8B-v0.1/snapshots/eb2676d20da2f2d41082289d23c59b9f7427f955/"  # Ensure this is the right path
 
 model = AutoModelForSequenceClassification.from_pretrained(path, device_map=device, 
