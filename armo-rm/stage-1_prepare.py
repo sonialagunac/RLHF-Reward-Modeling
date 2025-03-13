@@ -37,19 +37,23 @@ attributes = [
     "code-instruction-following",
     "code-readability",
 ]
-
+cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
+path_armo_data= cache_dir + "datasets/RLHFlow___armo_rm-multi-objective-data-v0.1/default/0.0.0/11ae786cce0615e787f4c83e2a770751935e79b2/"
+path_armo = cache_dir + "models--RLHFlow--ArmoRM-Llama3-8B-v0.1/snapshots/eb2676d20da2f2d41082289d23c59b9f7427f955/"  # Ensure this is the right path
+path_fsfair = cache_dir + "models--sfairXC--FsfairX-LLaMA3-RM-v0.1/snapshots/94fad49f1b3227aa8b566f415a335adb68ec544c/"
+save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/"
 # Initialize the argument parser to handle command-line inputs
 parser = ArgumentParser()
 parser.add_argument(
     "--model_path",
     type=str,
-    default="sfairXC/FsfairX-LLaMA3-RM-v0.1",
+    default=path_fsfair, #"sfairXC/FsfairX-LLaMA3-RM-v0.1",
     help="Path to the pre-trained model (HuggingFace path or local folder)",
 )
 parser.add_argument(
     "--dataset_path",
     type=str,
-    default="RLHFlow/ArmoRM-Multi-Objective-Data-v0.1",
+    default=path_armo_data, #"RLHFlow/ArmoRM-Multi-Objective-Data-v0.1",
     help="Path to the dataset (HuggingFace path or local folder)",
 )
 parser.add_argument(
@@ -80,7 +84,7 @@ if args.n_shards > 1:
 rm = AutoModel.from_pretrained(
     args.model_path,
     torch_dtype=torch.bfloat16,  # Use bfloat16 precision for model weights to save memory
-    attn_implementation="flash_attention_2",  # Specify the attention implementation for efficiency
+   # Removing for now attn_implementation="flash_attention_2",  # Specify the attention implementation for efficiency
 )
 
 device = f"cuda:{args.device}"  # Define the CUDA device string
@@ -95,8 +99,9 @@ labels = []
 
 # Iterate over each example in the dataset with a progress bar
 for example in tqdm(ds, desc="Processing dataset"):
+# for example in ds.select(range(2)):  # Select only the first two rows
     # Format the conversation messages using the tokenizer's chat template without tokenization
-    if args.model_path.endswith("FsfairX-LLaMA3-RM-v0.1"):
+    if "FsfairX-LLaMA3-RM-v0.1" in args.model_path: # changed from ends with to in bc of change in path cluster
         # Follows the demo code: https://huggingface.co/sfairXC/FsfairX-LLaMA3-RM-v0.1
         conv_formatted = rm_tokenizer.apply_chat_template(
             example["messages"], tokenize=False, add_generation_prompt=False
@@ -133,7 +138,7 @@ dataset_name = args.dataset_path.split("/")[
     -1
 ]  # Extract the dataset name from the dataset path
 save_path = os.path.join(
-    HOME, "data", "ArmoRM", "embeddings", model_name, dataset_name
+    save_path_dir, "data_RLHF", "ArmoRM", "embeddings", model_name, dataset_name
 )  # Construct the save directory path
 os.makedirs(save_path, exist_ok=True)  # Create the directory if it doesn't exist
 

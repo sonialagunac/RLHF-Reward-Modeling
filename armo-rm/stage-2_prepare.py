@@ -87,7 +87,7 @@ else:
 HOME = os.path.expanduser("~")
 model_name = args.model_path.split("/")[-1]
 dataset_name = args.dataset_path.split("/")[-1]
-save_path = HOME + f"/data/ArmoRM/embeddings/{model_name}/{dataset_name}"
+save_path =  "/cluster/dataset/vogtlab/Group/slaguna/" + f"data_RLHF/ArmoRM/embeddings/{model_name}/{dataset_name}"
 if args.source is not None:
     save_path += f"-{args.source}"
 save_path += f"-{args.dataset_split}"
