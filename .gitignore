@@ -4,6 +4,9 @@
 # logs
 out_log/
 
+# drafts
+kk*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

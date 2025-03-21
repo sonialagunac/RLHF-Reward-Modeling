@@ -37,23 +37,19 @@ attributes = [
     "code-instruction-following",
     "code-readability",
 ]
-cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
-path_armo_data= cache_dir + "datasets/RLHFlow___armo_rm-multi-objective-data-v0.1/default/0.0.0/11ae786cce0615e787f4c83e2a770751935e79b2/"
-path_armo = cache_dir + "models--RLHFlow--ArmoRM-Llama3-8B-v0.1/snapshots/eb2676d20da2f2d41082289d23c59b9f7427f955/"  # Ensure this is the right path
-path_fsfair = cache_dir + "models--sfairXC--FsfairX-LLaMA3-RM-v0.1/snapshots/94fad49f1b3227aa8b566f415a335adb68ec544c/"
-save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/"
+
 # Initialize the argument parser to handle command-line inputs
 parser = ArgumentParser()
 parser.add_argument(
     "--model_path",
     type=str,
-    default=path_fsfair, #"sfairXC/FsfairX-LLaMA3-RM-v0.1",
+    default="sfairXC/FsfairX-LLaMA3-RM-v0.1",
     help="Path to the pre-trained model (HuggingFace path or local folder)",
 )
 parser.add_argument(
     "--dataset_path",
     type=str,
-    default=path_armo_data, #"RLHFlow/ArmoRM-Multi-Objective-Data-v0.1",
+    default="RLHFlow/ArmoRM-Multi-Objective-Data-v0.1",
     help="Path to the dataset (HuggingFace path or local folder)",
 )
 parser.add_argument(
@@ -68,8 +64,37 @@ parser.add_argument(
 parser.add_argument(
     "--device", type=int, default=0, help="CUDA device index to use for computation"
 )
+
+parser.add_argument(
+    "--cluster_mds",
+    type=bool,
+    default=True,
+    help="Whether to use MDS Cluster, paths to models offline",
+)
+
 args = parser.parse_args()  # Parse the provided command-line arguments
 
+# Define the path to save the embeddings and labels
+HOME = os.path.expanduser("~")  # Get the home directory of the current user
+model_name = args.model_path.split("/")[-1]  # Extract the model name from the model path
+dataset_name = args.dataset_path.split("/")[-1]  # Extract the dataset name from the dataset path
+save_path = os.path.join(
+    HOME, "data", "ArmoRM", "embeddings", model_name, dataset_name
+)  # Construct the save directory path
+
+if args.cluster_mds:
+    cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
+    path_armo_data= cache_dir + "datasets/RLHFlow___armo_rm-multi-objective-data-v0.1/default/0.0.0/11ae786cce0615e787f4c83e2a770751935e79b2/"
+    path_armo = cache_dir + "models--RLHFlow--ArmoRM-Llama3-8B-v0.1/snapshots/eb2676d20da2f2d41082289d23c59b9f7427f955/"  # Ensure this is the right path
+    path_fsfair = cache_dir + "models--sfairXC--FsfairX-LLaMA3-RM-v0.1/snapshots/94fad49f1b3227aa8b566f415a335adb68ec544c/"
+    save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/"
+    args.model_path = path_fsfair
+    args.dataset_path = path_armo_data
+    model_name = "FsfairX-LLaMA3-RM-v0.1" 
+    dataset_name = "ArmoRM-Multi-Objective-Data-v0.1" 
+    save_path = os.path.join(save_path_dir, "data_RLHF", "ArmoRM", "embeddings", model_name, dataset_name)  # Construct the save directory path
+
+os.makedirs(save_path, exist_ok=True)  # Create the directory if it doesn't exist
 # Load the specified dataset and prepare it for processing
 ds = datasets.load_dataset(args.dataset_path)[
     "train"
@@ -128,19 +153,6 @@ for example in tqdm(ds, desc="Processing dataset"):
 labels = np.array(labels, dtype=np.float32)
 labels = torch.from_numpy(labels)  # Convert the NumPy array to a PyTorch tensor
 embeddings = torch.stack(embeddings, dim=0)  # Stack all embeddings into a single tensor
-
-# Define the path to save the embeddings and labels
-HOME = os.path.expanduser("~")  # Get the home directory of the current user
-model_name = args.model_path.split("/")[
-    -1
-]  # Extract the model name from the model path
-dataset_name = args.dataset_path.split("/")[
-    -1
-]  # Extract the dataset name from the dataset path
-save_path = os.path.join(
-    save_path_dir, "data_RLHF", "ArmoRM", "embeddings", model_name, dataset_name
-)  # Construct the save directory path
-os.makedirs(save_path, exist_ok=True)  # Create the directory if it doesn't exist
 
 # Save the embeddings and labels in a safetensors file with shard indexing
 save_file(

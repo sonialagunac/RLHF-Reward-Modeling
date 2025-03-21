@@ -300,6 +300,7 @@ def load_embeddings(embedding_path_pattern, device):
         embeddings_data = load_file(embedding_path)
         embeddings.append(embeddings_data["embeddings"].to(device))
         prompt_embeddings.append(embeddings_data["prompt_embeddings"].to(device))
+
     embeddings = torch.cat(embeddings, dim=0).float()
     prompt_embeddings = torch.cat(prompt_embeddings, dim=0).float()
     return embeddings, prompt_embeddings
@@ -314,7 +315,7 @@ parser.add_argument(
     default="RLHFlow/ArmoRM-Multi-Objective-Data-v0.1",
 )
 parser.add_argument(
-    "--preference_dataset", type=str, default="RLHFlow/pair_data_v2_80K_wsafety"
+    "--preference_dataset", type=str, default="RLHFlow/pair_data_v2_80K_wsafety",
 )
 parser.add_argument(
     "--reference_dataset",
@@ -344,27 +345,57 @@ parser.add_argument("--temperature", type=float, default=10)
 parser.add_argument("--n_hidden", type=int, default=3)
 parser.add_argument("--hidden_size", type=int, default=1024)
 parser.add_argument("--dropout", type=float, default=0.2)
+
+parser.add_argument(
+    "--cluster_mds",
+    type=bool,
+    default=True,
+    help="Whether to use MDS Cluster, paths to models offline",
+)
+
 args = parser.parse_args()
 
 # Define default paths
 HOME = os.path.expanduser("~")
-
 if args.reference_dataset is None:
     args.reference_dataset = args.preference_dataset
     print(
         f"Using {args.preference_dataset} as the reference dataset for verbosity debiasing."
     )
-
 args.model_name = args.model_path.split("/")[-1]
 args.multi_objective_dataset_name = args.multi_objective_dataset.split("/")[-1]
 args.preference_dataset_name = args.preference_dataset.split("/")[-1]
 args.reference_dataset_name = args.reference_dataset.split("/")[-1]
-
 args.embedding_path = f"{HOME}/data/ArmoRM/embeddings/{args.model_name}/{args.preference_dataset_name}*.safetensors"
 args.regression_layer_path = f"{HOME}/data/ArmoRM/regression_weights/{args.model_name}_{args.multi_objective_dataset_name}.pt"
 args.reward_bench_embedding_path = (
     f"{HOME}/data/ArmoRM/embeddings/{args.model_name}/reward-bench-filtered.safetensors"
 )
+embedding_path_ref = f"{HOME}/data/ArmoRM/embeddings/{args.model_name}/{args.reference_dataset_name}*.safetensors"
+save_path = f"{HOME}/data/ArmoRM/gating_network_{args.model_name}.pt"
+
+if args.cluster_mds:
+    cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
+    path_armo_data= cache_dir + "datasets/RLHFlow___armo_rm-multi-objective-data-v0.1/default/0.0.0/11ae786cce0615e787f4c83e2a770751935e79b2/"
+    # path_pref_data= cache_dir + "datasets/RLHFlow___pair_data_v2_80_k_wsafety/default/0.0.0/8115933aa14a9d1c06fc9eb96311df38bbf65419/"
+    path_ref_data = cache_dir + "datasets/RLHFlow___ultra_feedback-preference-standard/default/0.0.0/caad75bface3d66c59a14e1d40147a8608a383b0/"
+    path_fsfair = cache_dir + "models--sfairXC--FsfairX-LLaMA3-RM-v0.1/snapshots/94fad49f1b3227aa8b566f415a335adb68ec544c/"
+    path_reward_bench_data_filter = cache_dir + "datasets/reward-bench-filtered/"
+    
+    args.model_name = "FsfairX-LLaMA3-RM-v0.1" 
+    args.multi_objective_dataset_name = "ArmoRM-Multi-Objective-Data-v0.1" 
+    args.preference_dataset_name = "UltraFeedback-preference-standard" #pair_data_v2_80K_wsafety" 
+    args.reference_dataset_name = "UltraFeedback-preference-standard" #pair_data_v2_80K_wsafety" 
+    args.multi_objective_dataset = path_armo_data
+    args.preference_dataset = path_ref_data
+    args.reference_dataset = path_ref_data
+    args.model_path = path_fsfair
+    save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/data_RLHF/ArmoRM/"
+    args.embedding_path = save_path_dir + f"embeddings/{args.model_name}/{args.preference_dataset_name}*.safetensors"
+    args.regression_layer_path = save_path_dir + f"regression_weights/{args.model_name}_{args.multi_objective_dataset_name}.pt"
+    args.reward_bench_embedding_path = (save_path_dir + f"embeddings/{args.model_name}/reward_bench-filtered.safetensors")
+    embedding_path_ref = save_path_dir + f"embeddings/{args.model_name}/{args.reference_dataset_name}*.safetensors"
+    save_path = save_path_dir + f"gating_network_{args.model_name}_{args.preference_dataset_name}.pt"
 
 device = f"cuda:{args.device}" if args.device >= 0 else "cpu"
 
@@ -384,8 +415,7 @@ regression_layer = torch.load(args.regression_layer_path, map_location=device)["
 n_attributes, hidden_size = regression_layer.shape
 
 # Load reference dataset embeddings
-embedding_path = f"{HOME}/data/ArmoRM/embeddings/{args.model_name}/{args.reference_dataset_name}*.safetensors"
-ref_embeddings, ref_prompt_embeddings = load_embeddings(embedding_path, device=device)
+ref_embeddings, ref_prompt_embeddings = load_embeddings(embedding_path_ref, device=device)
 
 # Calculate pairwise rewards and rewards difference
 pairwise_rewards = ref_embeddings @ regression_layer.T
@@ -468,7 +498,6 @@ with torch.no_grad():
     print(f"Validation accuracy: {acc_val.item():.4f}")
 
 # Save the trained gating network
-save_path = f"{HOME}/data/ArmoRM/gating_network_{args.model_name}.pt"
 torch.save(gating_network.state_dict(), save_path)
 print(f"Saved gating network to {save_path}")
 
@@ -485,7 +514,11 @@ if args.eval_reward_bench:
         )
         correct_rb = (pred_rb[:, 0] > pred_rb[:, 1]).float()
 
-    reward_bench_ds = datasets.load_dataset("allenai/reward-bench", split="filtered")
+    if args.cluster_mds:
+        reward_bench_ds = datasets.load_from_disk(path_reward_bench_data_filter) #offline
+    else:
+        reward_bench_ds = datasets.load_dataset("allenai/reward-bench", split="filtered")
+    
     df_examples = pd.DataFrame(
         {"subset": reward_bench_ds["subset"], "correct": correct_rb.cpu().numpy()}
     )

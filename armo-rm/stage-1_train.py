@@ -46,11 +46,33 @@ parser.add_argument(
     default=None,
     help="Path to save the regression weights. If not provided, defaults to HOME/data/ArmoRM/regression_weights/",
 )
+
+parser.add_argument(
+    "--cluster_mds",
+    type=bool,
+    default=True,
+    help="Whether to use MDS Cluster, paths to models offline",
+)
+
 args = parser.parse_args()
 
 # Extract names from paths
 args.model_name = args.model_path.split("/")[-1]
 args.dataset_name = args.dataset_path.split("/")[-1]
+
+if args.cluster_mds:
+    cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
+    path_armo_data= cache_dir + "datasets/RLHFlow___armo_rm-multi-objective-data-v0.1/default/0.0.0/11ae786cce0615e787f4c83e2a770751935e79b2/"
+    path_fsfair = cache_dir + "models--sfairXC--FsfairX-LLaMA3-RM-v0.1/snapshots/94fad49f1b3227aa8b566f415a335adb68ec544c/"
+    save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/data_RLHF/ArmoRM"
+    embd_dir = save_path_dir + "/embeddings/"
+    args.model_path = path_fsfair
+    args.dataset_path = path_armo_data
+    args.output_dir = save_path_dir + "/regression_weights/"
+    args.model_name = "FsfairX-LLaMA3-RM-v0.1" 
+    args.dataset_name = "ArmoRM-Multi-Objective-Data-v0.1" 
+    args.embeddings_dir = os.path.join(embd_dir, args.model_name, args.dataset_name)
+
 
 # ---------------------------
 # Configuration and Setup

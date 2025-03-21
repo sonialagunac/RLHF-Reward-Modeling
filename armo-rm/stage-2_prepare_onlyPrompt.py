@@ -33,7 +33,6 @@ def find_token_for_gating(lst, model_family):
             return j
     raise ValueError("Token pattern not found in the list.")
 
-
 # Initialize the argument parser to handle command-line inputs
 parser = ArgumentParser()
 parser.add_argument(
@@ -98,7 +97,7 @@ args = parser.parse_args()  # Parse the provided command-line arguments
 HOME = os.path.expanduser("~")
 model_name = args.model_path.split("/")[-1]
 dataset_name =  args.dataset_path.split("/")[-1]
-save_path = HOME + f"/data/ArmoRM/embeddings/{model_name}/{dataset_name}"
+save_path = HOME + f"/data/ArmoRM/embeddings_prompt/{model_name}/{dataset_name}"
 
 if args.cluster_mds:
     cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
@@ -107,7 +106,7 @@ if args.cluster_mds:
     save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/"
     model_name = "FsfairX-LLaMA3-RM-v0.1" 
     dataset_name = "pair_data_v2_80K_wsafety" 
-    save_path =  save_path_dir + f"data_RLHF/ArmoRM/embeddings/{model_name}/{dataset_name}"
+    save_path =  save_path_dir + f"data_RLHF/ArmoRM/embeddings_prompt/{model_name}/{dataset_name}"
     args.dataset_path = path_pref_data
     if args.UF:
         path_UF_preference = cache_dir + "datasets/RLHFlow___ultra_feedback-preference-standard/default/0.0.0/caad75bface3d66c59a14e1d40147a8608a383b0/"
@@ -135,10 +134,7 @@ else:
 
 
 # Load and prepare the dataset
-if args.RB:
-    ds = datasets.load_from_disk(args.dataset_path) #offline
-else:
-    ds = datasets.load_dataset(args.dataset_path, split=args.dataset_split)
+ds = datasets.load_dataset(args.dataset_path, split=args.dataset_split)
 if args.source is not None:
     ds = ds.filter(lambda x: x["source"] == args.source)
 if args.n_shards > 1:
@@ -180,16 +176,10 @@ for example in tqdm(ds, desc="Examples"):
 
     for iter_example in [chosen, rejected]:
         # Format the conversation messages using the tokenizer's chat template without tokenization
-        if "FsfairX-LLaMA3-RM-v0.1" in args.model_path: # args.model_path.endswith("FsfairX-LLaMA3-RM-v0.1"):
-            # Follows the demo code: https://huggingface.co/sfairXC/FsfairX-LLaMA3-RM-v0.1
-            conv_formatted = tokenizer.apply_chat_template(
-                iter_example, tokenize=False, add_generation_prompt=False
-            ).replace(tokenizer.bos_token, "")
-        else:
-            conv_formatted = tokenizer.apply_chat_template(iter_example, tokenize=False)
-
+        # Extract only the user message (first 'role': 'user' entry)
+        user_prompt = next((msg["content"] for msg in iter_example if msg["role"] == "user"), None)
         # Tokenize the formatted conversation and move tensors to the specified device
-        conv_tokenized = tokenizer(conv_formatted, return_tensors="pt").to(device)
+        conv_tokenized = tokenizer(user_prompt, return_tensors="pt").to(device)
 
         input_ids = conv_tokenized["input_ids"]
 
@@ -200,24 +190,14 @@ for example in tqdm(ds, desc="Examples"):
         with torch.no_grad():
             output = model(**conv_tokenized)
             last_hidden_state = output.last_hidden_state[0]
-
-            # Find the position of the gating token and extract embeddings
-            gating_token_position = find_token_for_gating(
-                input_ids[0].tolist(), args.model_family
-            )
-            prompt_embedding = last_hidden_state[gating_token_position].cpu()
-            last_token_embedding = last_hidden_state[-1].cpu()
-
-            pair_embeddings.append(last_token_embedding)
+            prompt_embedding = last_hidden_state[-1].cpu()
             pair_prompt_embeddings.append(prompt_embedding)
 
     # Only add the pair if both chosen and rejected embeddings were successfully computed
-    if len(pair_embeddings) == 2:
-        embeddings.append(torch.stack(pair_embeddings))
+    if len(pair_prompt_embeddings) == 2:
         prompt_embeddings.append(torch.stack(pair_prompt_embeddings))
 
 # Convert lists of embeddings to tensors
-embeddings = torch.stack(embeddings)
 prompt_embeddings = torch.stack(prompt_embeddings)
 
 # Prepare the directory for saving embeddings
@@ -230,7 +210,7 @@ file_name = (
 
 # Save the embeddings and prompt embeddings using safetensors
 save_file(
-    {"embeddings": embeddings, "prompt_embeddings": prompt_embeddings},
+    {"prompt_embeddings": prompt_embeddings},
     f"{save_path}.safetensors",
 )
 
