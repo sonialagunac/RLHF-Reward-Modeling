@@ -3,7 +3,7 @@
 #SBATCH --job-name=RLHF_interp
 #SBATCH --output=../out_log/%j.out
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=40G
+#SBATCH --mem=90G
 #SBATCH --time=1-10:00:00
 #SBATCH -p gpu 
 #SBATCH --gres=gpu:1

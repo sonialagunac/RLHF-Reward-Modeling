@@ -4,40 +4,69 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from datasets import load_dataset
 from tqdm.auto import tqdm
 import json
+import gc
 from safetensors.torch import save_file
 
 # === Configuration and Define the concepts to label ===
 cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
-model_path = cache_dir + "/models--meta-llama--Meta-Llama-3-8B-Instruct/snapshots/5f0b02c75b57c5855da9ae460ce51323ea669d8a/"
+# model_path = cache_dir + "models--meta-llama--Meta-Llama-3-8B-Instruct/snapshots/5f0b02c75b57c5855da9ae460ce51323ea669d8a/" #Running out of memory with this one, changing to a smaller model instead
+#  model_name = "Meta-Llama-3-8B-Instruct"
+
+# model_path = cache_dir + "mistral-7b-instruct"  # Smaller memory footprint
+# model_name = "mistral-7b-instruct"
+
+model_path = cache_dir + "phi-3-mini-4k-instruct" #Smaller model
+model_name = "phi-3-mini-4k-instruct"
+
 dataset_path = cache_dir + "datasets/RLHFlow___ultra_feedback-preference-standard/default/0.0.0/caad75bface3d66c59a14e1d40147a8608a383b0/"
 save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/"
 dataset_name = "UltraFeedback-preference-standard"
-save_path =  save_path_dir + f"data_RLHF/ArmoRM/labels/{dataset_name}"
+save_path =  save_path_dir + f"data_RLHF/ArmoRM/labels/{model_name}/{dataset_name}"
+torch.backends.cuda.matmul.allow_tf32 = True
 
 concepts = ["helpfulness", "correctness", "coherence", "complexity", "verbosity", "overall_score", "instruction_following", "truthfulness", "honesty",  "is_safe", "score", "overall_quality", "judge_lm", "style", "explanation", "instruction-following", "readability"]
 split = "train"  # or "validation"
-max_tokens = 2048
+max_tokens = 190
+batch_size = 8
 output_file = cache_dir + "datasets/RLHFlow___ultra_feedback-preference-standard/default/0.0.0/caad75bface3d66c59a14e1d40147a8608a383b0/labeled_prompts_llama3.jsonl"
 
 # === Load model and tokenizer ===
-tokenizer = AutoTokenizer.from_pretrained(model_path)
+tokenizer = AutoTokenizer.from_pretrained(
+    model_path,
+    # local_files_only=True,
+    use_fast=False  # explicitly specify this to avoid fast-tokenizer parsing errors, needed for mistral, not for llama
+)
+tokenizer.pad_token = tokenizer.eos_token
+
 model = AutoModelForCausalLM.from_pretrained(
-    model_path, device_map="auto", torch_dtype=torch.bfloat16
+    model_path, device_map="auto", torch_dtype=torch.float16 #or bfloat16
 )
 model.eval() 
-# llm = pipeline("text-generation", model=model, tokenizer=tokenizer, device=0)
+# llm = pipeline("text-generation", model=model, tokenizer=tokenizer, device_map="auto")
 
 
 # No gradient tracking
-def generate(prompt, max_tokens):
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+def generate(batch, max_tokens):
+    # inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True).to(model.device)
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
             max_new_tokens=max_tokens,
             do_sample=False
-        )
-    return tokenizer.decode(outputs[0], skip_special_tokens=True).replace(prompt, "")
+        ).cpu()
+
+    # Slice off the prompt to get *only* new generated tokens
+    # generated_ids = outputs[:, inputs["input_ids"].shape[1]:]
+    # decoded = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    # return decoded
+    decoded_full =  tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    trimmed_outputs = [full[len(prompt):] if full.startswith(prompt) else full
+                   for prompt, full in zip(batch, decoded_full)]
+    del inputs, decoded_full, outputs
+    torch.cuda.empty_cache()
+    gc.collect()    
+    return trimmed_outputs
 
 # === Load dataset ===
 ds = load_dataset(dataset_path, split=split)
@@ -49,7 +78,7 @@ def make_label_prompt(prompt_text, concepts):
         f"Please rate the following assistant response for each of the following concepts: {concept_str}.\n\n"
         f"Input user prompt:\n{prompt_text[0]['content']}\n\n"
         f"Assistant Response:\n{prompt_text[1]['content']}\n\n"
-        f"For each concept, give a score from 0 (very poor) to 1 (excellent), like this:\n"
+        f"For each concept, give a score from 0 (very poor) to 1 (excellent), without an explanation, like this:\n"
         f"helpfulness: 0.2\ncorrectness: 0.5\n...\n\n"
         f"Scores:\n"
     )
@@ -68,30 +97,30 @@ def parse_scores(response, concepts):
                 continue
     return [scores.get(c.lower(), 0.0) for c in concepts]  # Default 0.0 if not found
 
-concepts_label = []
 # === Main loop ===
-for example in tqdm(ds, desc="Labeling prompts"):
-    chosen = example["chosen"]
-    rejected = example["rejected"]
+all_prompt_chosen, all_prompt_rejected = [], []
+for example in tqdm(ds, desc="Preparing prompts"):
+    chosen, rejected = example["chosen"], example["rejected"]
     if "prompt" in example:
-        # Format the data with the standard chat template if prompt is available
-        chosen = [
-            {"role": "user", "content": example["prompt"]},
-            {"role": "assistant", "content": chosen},
-        ]
-        rejected = [
-            {"role": "user", "content": example["prompt"]},
-            {"role": "assistant", "content": rejected},
-        ]
+        chosen = [{"role": "user", "content": example["prompt"]}, {"role": "assistant", "content": chosen}]
+        rejected = [{"role": "user", "content": example["prompt"]}, {"role": "assistant", "content": rejected}]
 
-    prompt_chosen = make_label_prompt(chosen, concepts)
-    prompt_rejected = make_label_prompt(rejected, concepts)
-    response_chosen = generate(prompt_chosen, max_tokens)
-    response_rejected = generate(prompt_rejected, max_tokens)
-    concepts_label.append([parse_scores(response_chosen, concepts),parse_scores(response_rejected, concepts) ])    
-    
-concepts_label = torch.tensor(concepts_label)
-# concepts_label = torch.stack(concepts_label)
+    all_prompt_chosen.append(make_label_prompt(chosen, concepts))
+    all_prompt_rejected.append(make_label_prompt(rejected, concepts))
+
+# Generate and parse responses
+def batch_infer(prompts):
+    results = []
+    for i in tqdm(range(0, len(prompts), batch_size), desc="Inference"):
+        batch_prompts = prompts[i:i+batch_size]
+        outputs = generate(batch_prompts, max_tokens)
+        results.extend([parse_scores(o, concepts) for o in outputs])
+    return torch.tensor(results)
+
+chosen_scores = batch_infer(all_prompt_chosen)
+rejected_scores = batch_infer(all_prompt_rejected)
+
+concepts_label = torch.stack([chosen_scores, rejected_scores], dim=1)
 os.makedirs(os.path.dirname(save_path), exist_ok=True)
 file_name = (save_path)
 # Save the embeddings and prompt embeddings using safetensors
