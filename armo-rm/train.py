@@ -95,8 +95,7 @@ embeddings = embed_data["embeddings"].float()
 prompt_embeddings = embed_data["prompt_embeddings"].float()
 
 label_data = load_file(args.labels_dir)
-concept_labels = label_data["concepts_label"].float().numpy()
-
+concept_labels = label_data["concepts_label"].float()
 # Get pairwise 
 pos_embeddings = embeddings[:, 0]       
 neg_embeddings = embeddings[:, 1] 
