@@ -184,7 +184,7 @@ for epoch in range(1):
 regression_model.eval()
 with torch.no_grad():
     val_loss = 0
-    for pos, neg, y in val_dl:
+    for pos, neg, _, _, y in val_dl:
         pos, neg, y = pos.to(device), neg.to(device), y.to(device)
         pred_diff = regression_model(pos) - regression_model(neg)
         val_loss += loss_fn(pred_diff, y).item()
