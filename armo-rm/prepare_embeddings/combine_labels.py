@@ -11,7 +11,7 @@ dataset_name = "UltraFeedback-preference-standard"
 model_name = "phi-3-mini-4k-instruct"
 
 save_path =  save_path_dir + f"data_RLHF/ArmoRM/labels/{model_name}/{dataset_name}"
-num_batches = 10
+num_batches = 20 #10
 
 # Load batch files
 batch_files = [f"{save_path}_batch_{i}.safetensors" for i in range(num_batches)]
@@ -26,7 +26,7 @@ for file in batch_files:
         raise FileNotFoundError(f"Batch file {file} not found.")
 
 # Concatenate tensors along the batch dimension
-combined_tensor = torch.cat(tensors, dim=0)
+combined_tensor = torch.cat(tensors, dim=1)
 
 # Save combined tensor
 combined_save_path = f"{save_path}_combined.safetensors"

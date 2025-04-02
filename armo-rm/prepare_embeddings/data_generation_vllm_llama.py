@@ -22,10 +22,10 @@ cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
 dataset_path = cache_dir + "datasets/RLHFlow___ultra_feedback-preference-standard/default/0.0.0/caad75bface3d66c59a14e1d40147a8608a383b0/"
 save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/"
 dataset_name = "UltraFeedback-preference-standard"
-model_id = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/phi-3-mini-4k-instruct" #Smaller model
-model_name = "phi-3-mini-4k-instruct"
-# model_id = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/models--meta-llama--Meta-Llama-3-8B-Instruct/snapshots/5f0b02c75b57c5855da9ae460ce51323ea669d8a/" #Running out of memory with this one, changing to a smaller model instead
-# model_name = "Meta-Llama-3-8B-Instruct"
+# model_id = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/phi-3-mini-4k-instruct" #Smaller model
+# model_name = "phi-3-mini-4k-instruct"
+model_id = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/models--meta-llama--Meta-Llama-3-8B-Instruct/snapshots/5f0b02c75b57c5855da9ae460ce51323ea669d8a/" #Running out of memory with this one, changing to a smaller model instead
+model_name = "Meta-Llama-3-8B-Instruct"
 save_path = save_path_dir + f"data_RLHF/ArmoRM/labels/{model_name}/{dataset_name}"
 
 # dataset_path = "RLHFlow/UltraFeedback-preference-standard"
