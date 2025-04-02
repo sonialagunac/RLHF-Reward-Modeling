@@ -53,34 +53,6 @@ start_idx = args.batch_index * batch_len
 end_idx = (args.batch_index + 1) * batch_len if args.batch_index < num_batches - 1 else len(ds_full)
 ds = ds_full.select(range(start_idx, end_idx))
 
-# === Prompt & parsing ===
-
-# Version without chat template and doing prompt specific rating
-# def make_label_prompt(prompt_text, concepts):
-#     concept_str = ", ".join(concepts)
-#     return (
-#         f"Please rate the following assistant response for each of the following concepts: {concept_str}.\n\n"
-#         f"Input user prompt:\n{prompt_text[0]['content']}\n\n"
-#         f"Assistant Response:\n{prompt_text[1]['content']}\n\n"
-#         f"For each concept, give a score from 0 (very poor) to 1 (excellent).\n"
-#         f"Scores:\n"
-#     )
-# def parse_scores(response, concepts):
-#     scores = {}
-#     for line in response.strip().split("\n"):
-#         if ":" in line:
-#             key, val = line.split(":", 1)
-#             key = key.strip().lower()
-#             val = val.strip()
-#             try:
-#                 val = float(val)
-#                 scores[key] = val
-#             except ValueError:
-#                 continue
-#     return [scores.get(c.lower(), 0.0) for c in concepts]
-
-# Should have made it faster, not really
-
 def call_model_safe(messages):
     try:
         return call_model(messages)
@@ -148,10 +120,7 @@ def parse_scores(text, concepts):
             json_obj =  json.loads(json_str)
             for c in concepts:
                 scores[c.lower()] = json_obj.get(c, 0.5)
-            # return torch.tensor([json_txt.get(c, 0.0) for c in concepts])
         except json.JSONDecodeError as e:
-            # print(f" JSON Decode Error: {e}")
-            # return None
             pass
     if not scores:
         for line in text.splitlines():
@@ -166,7 +135,6 @@ def parse_scores(text, concepts):
                 except ValueError:
                     continue  # skip non-numeric
     # Build tensor
-    
     if len(scores) != len(concepts):
         print(f"Missing concepts in output")
         print(text)
@@ -183,7 +151,6 @@ def parse_scores(text, concepts):
 def call_model(
         messages=None,
         n_used=1,
-        # logprobs=False,
         seed=None,
         temperature=0.7,
         top_p=0.95,
@@ -193,10 +160,6 @@ def call_model(
     success = False
     it = 0
     llm_name_used = model_id
-    # if llm_name == 'llama-3-70B':
-    #     llm_name_used = 'meta-llama/Meta-Llama-3-70B-Instruct'
-    # elif llm_name == 'llama-3-8B':
-    #     llm_name_used = 'meta-llama/Meta-Llama-3-8B-Instruct'
 
     while not success and it < MAX_RETRY:
         it += 1
@@ -208,11 +171,10 @@ def call_model(
                     n=n_used,
                     temperature=temperature,
                     top_p=top_p,
-                    # logprobs=logprobs,
                     seed=seed,
                 )
             output = response.choices[0].message.content
-            # print(response.usage)
+
         except:
             output = ''
             print("not getting the full list of concepts bc max_tokens reached")
@@ -226,20 +188,6 @@ def call_model(
     if not success:
         raise RuntimeError("Failed after 5 attempts.")
     return  output
-
-# def batch_infer(prompts):
-#     results = []
-#     for i in tqdm(range(0, len(prompts), batch_size), desc="Inference"):
-#         batch_prompts = prompts[i:i+batch_size]
-#         batch_outputs = []
-#         for p in batch_prompts:
-#             output = call_model(p)
-#             scores = parse_scores(output, concepts)
-#             batch_outputs.append(scores)
-#         results.extend(batch_outputs)
-#         gc.collect()
-#     return results
-
 
 if __name__ == "__main__":
     # === Main loop ===
