@@ -12,31 +12,39 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 MAX_RETRY = 5 # in case when you prompt an llm the api returns an error (it may sometime happen if you do multiple LLM calls in parallel)
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch_index", type=int, default=0, help="Index of the current batch (starting from 0)")
-parser.add_argument("--num_batches", type=int, default=10, help="How many batches to split the data generation in")
+parser.add_argument("--num_batches", type=int, default=1000, help="How many batches to split the data generation in")
 parser.add_argument("--system_prompt", type=str, default=None)
 args = parser.parse_args()
 
 # === Config ===
-# cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
-# dataset_path = cache_dir + "datasets/RLHFlow___ultra_feedback-preference-standard/default/0.0.0/caad75bface3d66c59a14e1d40147a8608a383b0/"
-# save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/"
+cache_dir = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/"
+
+dataset_path = cache_dir + "datasets/RLHFlow___ultra_feedback-preference-standard/default/0.0.0/caad75bface3d66c59a14e1d40147a8608a383b0/"
+save_path_dir = "/cluster/dataset/vogtlab/Group/slaguna/"
+dataset_name = "UltraFeedback-preference-standard"
+model_id = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/phi-3-mini-4k-instruct" #Smaller model
+model_name = "phi-3-mini-4k-instruct"
+# model_id = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/models--meta-llama--Meta-Llama-3-8B-Instruct/snapshots/5f0b02c75b57c5855da9ae460ce51323ea669d8a/" #Running out of memory with this one, changing to a smaller model instead
+# model_name = "Meta-Llama-3-8B-Instruct"
+save_path = save_path_dir + f"data_RLHF/ArmoRM/labels/{model_name}/{dataset_name}"
+
+# dataset_path = "RLHFlow/UltraFeedback-preference-standard"
 # dataset_name = "UltraFeedback-preference-standard"
 # model_name = "Qwen1.5-1.8B-Chat"
-# save_path = save_path_dir + f"data_RLHF/ArmoRM/labels/{model_name}/{dataset_name}"
+# model_id = "Qwen/Qwen1.5-1.8B-Chat"
+# save_path = "/local/home/slaguna/Projects/datasets/RLHF_UltraFeedback"
 
-dataset_path = "RLHFlow/UltraFeedback-preference-standard"
-dataset_name = "UltraFeedback-preference-standard"
-model_name = "Qwen1.5-1.8B-Chat"
-save_path = "/local/home/slaguna/Projects/datasets/RLHF_UltraFeedback"
-
-concepts = ["helpfulness", "correctness", "coherence", "complexity", "verbosity", "overall_score", "instruction_following", "truthfulness", "honesty", "is_safe", "score", "overall_quality", "judge_lm", "style", "explanation_score", "instruction-following", "readability"]
+concepts = ["helpfulness", "correctness", "coherence", "complexity", "verbosity", "overall_score", "instruction_following", "truthfulness", "honesty", "is_safe", "score", "overall_quality", "judge_lm", "style", "explanation_score", "readability"]
 split = "train"
-max_tokens = 190
-batch_size = 4
+max_tokens = 210
+batch_size = 8
 num_batches = args.num_batches
-api_base = "http://localhost:8000/v1"
-model_id = "Qwen/Qwen1.5-1.8B-Chat"
-
+openai_api_base = "http://localhost:8000/v1"
+openai_api_key = "EMPTY"
+client = openai.OpenAI(
+    api_key=openai_api_key,
+    base_url=openai_api_base,
+)
 
 # === Load dataset ===
 ds_full = load_dataset(dataset_path, split=split)
@@ -73,22 +81,24 @@ ds = ds_full.select(range(start_idx, end_idx))
 
 # Should have made it faster, not really
 
-# def call_model_safe(messages):
-#     try:
-#         return call_model(messages)
-#     except Exception as e:
-#         print(f"Error: {e}")
-#         return ''
+def call_model_safe(messages):
+    try:
+        return call_model(messages)
+    except Exception as e:
+        print(f"Error: {e}")
+        return ''
 
-# def batch_infer(prompts):
-#     results = []
-#     with ThreadPoolExecutor(max_workers=batch_size) as executor:
-#         futures = [executor.submit(call_model_safe, p) for p in prompts]
-#         for future in tqdm(as_completed(futures), total=len(futures), desc="Inference"):
-#             output = future.result()
-#             scores = parse_scores(output, concepts)
-#             results.append(scores)
-#     return results
+
+def batch_infer(prompts):
+    results = []
+    with ThreadPoolExecutor(max_workers=batch_size) as executor:
+        futures = [executor.submit(call_model_safe, p) for p in prompts]
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Inference"):
+            output = future.result()
+
+            scores = parse_scores(output, concepts)
+            results.append(scores)
+    return results
 
 
 def build_rating_chat(system_prompt, user_prompt, response_a, response_b, concepts):
@@ -101,7 +111,7 @@ def build_rating_chat(system_prompt, user_prompt, response_a, response_b, concep
         f"{{\n"
         + "\n".join([f'  "{c}": <score>,' for c in concepts]) + "\n"
         f"}}\n\n"
-        f"Now rate the following responses:"
+        f"Now rate the two responses."
     )
 
     messages = [
@@ -140,14 +150,9 @@ def parse_scores(text, concepts):
                 scores[c.lower()] = json_obj.get(c, 0.5)
             # return torch.tensor([json_txt.get(c, 0.0) for c in concepts])
         except json.JSONDecodeError as e:
-            print(f" JSON Decode Error: {e}")
+            # print(f" JSON Decode Error: {e}")
             # return None
             pass
-    else:
-        print("No JSON object found.")
-        # return None
-        pass
-        # Fallback: line-by-line parsing
     if not scores:
         for line in text.splitlines():
             if ":" in line:
@@ -161,9 +166,11 @@ def parse_scores(text, concepts):
                 except ValueError:
                     continue  # skip non-numeric
     # Build tensor
-    result = [scores.get(c.lower().replace("-", "_"), 0.5) for c in concepts]
-    if len(result) != len(concepts):
+    
+    if len(scores) != len(concepts):
         print(f"Missing concepts in output")
+        print(text)
+    result = [scores.get(c.lower().replace("-", "_"), 0.5) for c in concepts]
     try: 
         result = torch.tensor(result)
     except:
@@ -185,20 +192,11 @@ def call_model(
 
     success = False
     it = 0
-    llm_name_used = 'Qwen/Qwen1.5-1.8B-Chat'
+    llm_name_used = model_id
     # if llm_name == 'llama-3-70B':
     #     llm_name_used = 'meta-llama/Meta-Llama-3-70B-Instruct'
     # elif llm_name == 'llama-3-8B':
     #     llm_name_used = 'meta-llama/Meta-Llama-3-8B-Instruct'
-
-    openai_api_key = "EMPTY"
-    openai_api_base = "http://localhost:8000/v1"
-
-    client = openai.OpenAI(
-        api_key=openai_api_key,
-        base_url=openai_api_base,
-    )
-    
 
     while not success and it < MAX_RETRY:
         it += 1
@@ -214,6 +212,7 @@ def call_model(
                     seed=seed,
                 )
             output = response.choices[0].message.content
+            # print(response.usage)
         except:
             output = ''
             print("not getting the full list of concepts bc max_tokens reached")
@@ -228,18 +227,18 @@ def call_model(
         raise RuntimeError("Failed after 5 attempts.")
     return  output
 
-def batch_infer(prompts):
-    results = []
-    for i in tqdm(range(0, len(prompts), batch_size), desc="Inference"):
-        batch_prompts = prompts[i:i+batch_size]
-        batch_outputs = []
-        for p in batch_prompts:
-            output = call_model(p)
-            scores = parse_scores(output, concepts)
-            batch_outputs.append(scores)
-        results.extend(batch_outputs)
-        gc.collect()
-    return results
+# def batch_infer(prompts):
+#     results = []
+#     for i in tqdm(range(0, len(prompts), batch_size), desc="Inference"):
+#         batch_prompts = prompts[i:i+batch_size]
+#         batch_outputs = []
+#         for p in batch_prompts:
+#             output = call_model(p)
+#             scores = parse_scores(output, concepts)
+#             batch_outputs.append(scores)
+#         results.extend(batch_outputs)
+#         gc.collect()
+#     return results
 
 
 if __name__ == "__main__":
