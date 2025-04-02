@@ -6,7 +6,8 @@ out_log/
 
 # drafts
 kk*
-
+*.jsonl
+*/.*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
