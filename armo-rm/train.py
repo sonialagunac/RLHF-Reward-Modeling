@@ -1,7 +1,6 @@
 # ===============================
 # Unified Training Script
 # Ridge Regression + Gating Network
-# UltraFeedback Dataset (UF)
 # ===============================
 
 import os
@@ -18,30 +17,7 @@ from sklearn.metrics import mean_squared_error
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
-import torch.nn.functional as F
-
-class GatingNetwork(nn.Module):
-    def __init__(self, in_features, out_features, bias=True, temperature=10, logit_scale=1.0,
-                 hidden_dim=1024, n_hidden=3, dropout=0.2):
-        super().__init__()
-        self.temperature = temperature
-        self.logit_scale = nn.Parameter(torch.ones(1) * logit_scale)
-        self.dropout_prob = dropout
-        layers = []
-        for _ in range(n_hidden):
-            layers.append(nn.Linear(in_features, hidden_dim))
-            in_features = hidden_dim
-        layers.append(nn.Linear(in_features, out_features, bias=bias))
-        self.layers = nn.ModuleList(layers)
-
-    def forward(self, x):
-        for i, layer in enumerate(self.layers):
-            x = layer(x)
-            if i < len(self.layers) - 1:
-                x = F.relu(x)
-                if self.dropout_prob > 0:
-                    x = F.dropout(x, p=self.dropout_prob, training=self.training)
-        return F.softmax(x / self.temperature, dim=-1) * self.logit_scale
+from networks.networks import GatingNetwork
 
 # ---------------------------
 # Arguments
@@ -49,7 +25,9 @@ class GatingNetwork(nn.Module):
 parser = ArgumentParser()
 parser.add_argument("--embeddings_dir", type=str)
 parser.add_argument("--weights_dir", type=str)
-parser.add_argument("--labels_dir", type=str)
+parser.add_argument("--labels_dir_HF", type=str)
+parser.add_argument("--labels_dir_LLM", type=str)
+parser.add_argument("--labels_type", type=str, default='HF')
 parser.add_argument("--model_label_name", type=str)
 parser.add_argument("--model_path", type=str)
 parser.add_argument("--dataset_path", type=str)
@@ -81,10 +59,10 @@ if args.cluster_mds:
     args.embeddings_dir = os.path.join(save_path_dir + "/embeddings/", args.model_name, args.dataset_name + "-train.safetensors")
     args.weights_dir = save_path_dir + "/regression_weights/"
     args.model_label_name = "phi-3-mini-4k-instruct"
-    args.labels_dir = save_path_dir + f"/labels/{args.model_label_name}/{args.dataset_name}_combined.safetensors"
-
+    args.labels_dir_LLM = save_path_dir + f"/labels/{args.model_label_name}/{args.dataset_name}_combined.safetensors"
+    args.labels_dir_HF = cache_dir + "ultrafeedback_preference_with_annotations"
 device = f"cuda:{args.device}" if args.device >= 0 else "cpu"
-concepts = ["helpfulness", "correctness", "coherence", "complexity", "verbosity", "overall_score", "instruction_following", "truthfulness", "honesty",  "is_safe", "score", "overall_quality", "judge_lm", "style", "explanation", "instruction-following", "readability"]
+concepts = ["helpfulness", "correctness", "coherence", "complexity", "verbosity", "overall_score", "instruction_following", "truthfulness", "honesty",  "is_safe", "score", "overall_quality", "judge_lm", "style", "explanation", "readability"]
 
 # ---------------------------
 # Load concept labels + embeddings from safetensors
@@ -94,8 +72,12 @@ embed_data = load_file( args.embeddings_dir )
 embeddings = embed_data["embeddings"].float()
 prompt_embeddings = embed_data["prompt_embeddings"].float()
 
-label_data = load_file(args.labels_dir)
-concept_labels = label_data["concepts_label"].float()
+if args.labels_type == 'HF':
+    label_data = load_file(args.labels_dir_LLM)
+    concept_labels = label_data["concepts_label"].float()
+else:
+    ds = datasets.load_dataset(args.labels_dir_HF, split=args.dataset_split)
+    
 # Get pairwise 
 pos_embeddings = embeddings[:, 0]       
 neg_embeddings = embeddings[:, 1] 
