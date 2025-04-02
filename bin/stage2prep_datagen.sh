@@ -14,4 +14,4 @@ conda deactivate
 conda activate swiss_ai
 cd /cluster/home/slaguna/RLHF-Reward-Modeling/armo-rm/prepare_embeddings
 
-python data_generation_batches.py --batch_index $1 --num_batches $2
+python data_generation_transformers_batches.py --batch_index $1 --num_batches $2
