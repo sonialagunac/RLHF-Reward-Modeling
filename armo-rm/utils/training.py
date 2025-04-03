@@ -1,12 +1,66 @@
 from utils.utils import load_embeddings, eval_reward_bench
 import pandas as pd
 import wandb, datasets, torch
-
+from torch.distributions import Beta
 
 # --------------------------------------
 # Training and Eval Regression Functions
 # --------------------------------------
-def train_regression(model, optimizer, loss_fn, dataloader, device, epoch, total_epochs):
+
+
+def train_regression(score_projection, beta_head, optimizer, dataloader, device, epoch, total_epochs):
+    score_projection.train()
+    beta_head.train()
+    total_loss = 0
+
+    for pos, neg, _, _, y in dataloader:
+        pos, neg, y = pos.to(device), neg.to(device), y.to(device)
+        optimizer.zero_grad()
+
+        # Forward pass
+        pos_out = score_projection(pos)
+        neg_out = score_projection(neg)
+        alpha, beta = beta_head(pos_out, neg_out)
+
+        # Beta NLL Loss
+        dist = Beta(alpha, beta)
+        eps = 1e-4 #TODO make it a parameter
+        y = y.clamp(eps, 1 - eps) #Clamp y to avoid log(0) or log(1)
+        nll = -dist.log_prob(y).mean()
+
+        # Backprop
+        nll.backward()
+        optimizer.step()
+        total_loss += nll.item()
+
+    avg_loss = total_loss / len(dataloader)
+    print(f"Epoch {epoch}/{total_epochs} - Regression NLL Loss: {avg_loss:.4f}")
+    wandb.log({"regression_train_nll_loss": avg_loss, "epoch": epoch})
+    return avg_loss
+
+def validate_regression(score_projection, beta_head, dataloader, device):
+    score_projection.eval()
+    beta_head.eval()
+    total_loss = 0
+
+    with torch.no_grad():
+        for pos, neg, _, _, y in dataloader:
+            pos, neg, y = pos.to(device), neg.to(device), y.to(device)
+            pos_out = score_projection(pos)
+            neg_out = score_projection(neg)
+            alpha, beta = beta_head(pos_out, neg_out)
+
+            dist = Beta(alpha, beta)
+            nll = -dist.log_prob(y).mean()
+            total_loss += nll.item()
+
+    avg_loss = total_loss / len(dataloader)
+    print(f"Regression Validation NLL Loss: {avg_loss:.4f}")
+    wandb.log({"regression_val_nll_loss": avg_loss})
+    return avg_loss
+
+
+def train_regression_point_estimate(model, optimizer, loss_fn, dataloader, device, epoch, total_epochs):
     model.train()
     total_loss = 0
     for pos, neg, _, _, y in dataloader:
@@ -23,7 +77,7 @@ def train_regression(model, optimizer, loss_fn, dataloader, device, epoch, total
     return avg_loss
 
 
-def validate_regression(model, loss_fn, dataloader, device):
+def validate_regression_point_estimate(model, loss_fn, dataloader, device):
     model.eval()
     total_loss = 0
     with torch.no_grad():
@@ -40,9 +94,9 @@ def validate_regression(model, loss_fn, dataloader, device):
 # ----------------------------------
 # Training and Eval Gating Functions
 # ----------------------------------
-def train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn, scheduler_gate, dataloader, device, epoch):
+def train_gating(gating_network, score_projection, optimizer_gate, loss_gate_fn, scheduler_gate, dataloader, device, epoch):
     gating_network.train()
-    regression_model.eval()  # keep regression model fixed during gating training
+    score_projection.eval()  # keep regression model fixed during gating training
     total_loss = 0
     for pos, neg, pos_prompt, neg_prompt, _ in dataloader:
         pos, neg, pos_prompt, neg_prompt = pos.to(device), neg.to(device), pos_prompt.to(device), neg_prompt.to(device)
@@ -50,12 +104,12 @@ def train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn,
         
         # Forward pass for positive samples
         weights_pos = gating_network(pos_prompt)
-        concept_scores_pos = regression_model(pos)
+        concept_scores_pos = score_projection(pos)
         final_scores_pos = torch.sum(concept_scores_pos * weights_pos, dim=-1)
         
         # Forward pass for negative samples
         weights_neg = gating_network(neg_prompt)
-        concept_scores_neg = regression_model(neg)
+        concept_scores_neg = score_projection(neg)
         final_scores_neg = torch.sum(concept_scores_neg * weights_neg, dim=-1)
         
         loss_gate = loss_gate_fn(final_scores_pos - final_scores_neg, torch.ones_like(final_scores_pos))
@@ -69,17 +123,17 @@ def train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn,
     wandb.log({"gating_train_loss": avg_loss, "gating_epoch": epoch})
     return avg_loss
 
-def validate_gating(gating_network, regression_model, val_dl, device):
+def validate_gating(gating_network, score_projection, val_dl, device):
     gating_network.eval()
-    regression_model.eval()
+    score_projection.eval()
     with torch.no_grad():
         val_acc = 0
         for pos, neg, pos_prompt, neg_prompt, _ in val_dl:
             pos, neg, pos_prompt, neg_prompt = pos.to(device), neg.to(device), pos_prompt.to(device), neg_prompt.to(device)
             weights_val_pos = gating_network(pos_prompt)
             weights_val_neg = gating_network(neg_prompt)
-            concept_scores_pos = regression_model(pos) 
-            concept_scores_neg = regression_model(neg)
+            concept_scores_pos = score_projection(pos) 
+            concept_scores_neg = score_projection(neg)
             final_scores_pos = torch.sum(concept_scores_pos * weights_val_pos, dim=-1) 
             final_scores_neg = torch.sum(concept_scores_neg * weights_val_neg, dim=-1)
             acc = ((final_scores_pos - final_scores_neg) > 0).float().mean()

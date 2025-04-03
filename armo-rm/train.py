@@ -10,7 +10,7 @@ from safetensors.torch import load_file
 from sklearn.model_selection import train_test_split
 from torch import nn
 
-from models.networks import GatingNetwork
+from models.networks import GatingNetwork, ScoreProjection, BetaHead
 from utils.training import train_regression, validate_regression, train_gating, validate_gating, reward_bench_eval
 from utils.config import parse_args, set_default_paths, init_wandb, set_offline_paths, set_seed
 from utils.data import get_dataloaders
@@ -48,9 +48,13 @@ def main():
     # ---------------------------
     # Initialize Regression Model and Optimizer
     # ---------------------------
-    regression_model = nn.Linear(input_dim, output_dim, bias=False).to(device)
-    optimizer = torch.optim.AdamW(regression_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    loss_fn = nn.MSELoss()
+    score_projection = ScoreProjection(input_dim, output_dim).to(device)
+    beta_head = BetaHead(output_dim).to(device)
+    params = list(score_projection.parameters()) + list(beta_head.parameters())
+    optimizer = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.weight_decay)
+    # regression_model = nn.Linear(input_dim, output_dim, bias=False).to(device)
+    # optimizer = torch.optim.AdamW(regression_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    # loss_fn = nn.MSELoss()
     
     # ---------------------------
     # Initialize Gating Network and Optimizer
@@ -74,8 +78,8 @@ def main():
     # ---------------------------
     print("Training multivariate regression model on concept scores...")
     for epoch in tqdm(range(args.epochs_regression)):
-        train_regression(regression_model, optimizer, loss_fn, train_dl, device, epoch, args.epochs_regression)
-    validate_regression(regression_model, loss_fn, val_dl, device)
+        train_regression(score_projection, beta_head, optimizer, train_dl, device, epoch, args.epochs_regression)
+    validate_regression(score_projection, beta_head, val_dl, device)
     
     # ---------------------------
     # Save Regression Weights
@@ -92,8 +96,8 @@ def main():
     print("Training gating network...")
     for epoch in tqdm(range(args.epochs_gating)):
         # Here we optimize the gating network while keeping the regression model fixed.
-        train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn, scheduler_gate, train_dl, device, epoch)
-    validate_gating(gating_network, regression_model, val_dl, device)
+        train_gating(gating_network, score_projection, optimizer_gate, loss_gate_fn, scheduler_gate, train_dl, device, epoch)
+    validate_gating(gating_network, score_projection, val_dl, device)
     
     # ---------------------------
     # Save Gating Network
