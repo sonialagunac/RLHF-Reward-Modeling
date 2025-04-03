@@ -3,6 +3,9 @@ import torch
 from safetensors.torch import load_file
 import pandas as pd
 
+def compute_variance(alpha, beta):
+    return (alpha * beta) / ((alpha + beta) ** 2 * (alpha + beta + 1))
+
 def load_embeddings(embedding_path_pattern, device):
     """
     Load embeddings from safetensors files

@@ -71,7 +71,6 @@ def main():
     beta_head_gate = BetaHead(1).to(device)
     optimizer_gate = torch.optim.AdamW(gating_network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler_gate = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_gate, T_max=args.epochs_gating)
-    # loss_gate_fn = nn.BCEWithLogitsLoss()
     
     # ---------------------------
     # Regression Training Loop

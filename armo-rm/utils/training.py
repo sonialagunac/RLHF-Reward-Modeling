@@ -1,6 +1,7 @@
-from utils.utils import load_embeddings, eval_reward_bench
+from utils.utils import load_embeddings, eval_reward_bench, compute_variance
 import pandas as pd
-import wandb, datasets, torch
+import numpy as np
+import wandb, datasets, torch, tqdm
 from torch.distributions import Beta
 
 # --------------------------------------
@@ -126,6 +127,40 @@ def validate_gating(gating_network, score_projection, beta_head_gate, val_dl, de
     return avg_loss
 
 
+
+def inference_active_learning(gating_network, score_projection, beta_head, beta_head_pref, test_dl, device):
+    uncertainties_p = []
+    uncertainties_c = []
+    all_indices = []
+
+    # Inference on test set
+    for i, (pos, neg, pos_prompt, neg_prompt, y) in enumerate(tqdm(test_dl)):
+        pos, neg, pos_prompt, neg_prompt = pos.to(device), neg.to(device), pos_prompt.to(device), neg_prompt.to(device)
+        with torch.no_grad():
+            pos_out = score_projection(pos)
+            neg_out = score_projection(neg)
+            alpha_c, beta_c = beta_head(pos_out, neg_out)
+            var_c = compute_variance(alpha_c, beta_c)
+
+            weights_pos = gating_network(pos_prompt)
+            weights_neg = gating_network(neg_prompt)
+            concept_scores_pos = pos_out
+            concept_scores_neg = neg_out
+
+            final_scores_pos = (concept_scores_pos * weights_pos).sum(dim=-1, keepdim=True)
+            final_scores_neg = (concept_scores_neg * weights_neg).sum(dim=-1, keepdim=True)
+
+            alpha_p, beta_p = beta_head_pref(final_scores_pos, final_scores_neg)
+            var_p = compute_variance(alpha_p, beta_p)
+
+            uncertainties_p.append(var_p.cpu().numpy())
+            uncertainties_c.append(var_p.cpu().numpy())
+            all_indices.append(i)
+
+    uncertainties_p = np.concatenate(uncertainties_p)
+    uncertainties_c = np.concatenate(uncertainties_c)
+    all_indices = np.array(all_indices)
+    return uncertainties_p, uncertainties_c, all_indices
 
 # ---------------------------
 # RewardBench Evaluation
