@@ -7,6 +7,7 @@ import os
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch_index", type=int, default=0)
 parser.add_argument("--num_batches", type=int, default=10)
+parser.add_argument("--port", type=int, default=8000)
 args = parser.parse_args()
 
 # === Paths ===
@@ -15,8 +16,8 @@ labeling_script = "data_generation_vllm_llama.py"
 
 def main():
 
-    server_log_path = f"/cluster/work/vogtlab/Group/slaguna/logs/server_log_batch_{args.batch_index}.txt"
-    labeling_log_path = f"/cluster/work/vogtlab/Group/slaguna/logs/labeling_log_batch_{args.batch_index}.txt"
+    server_log_path = f"/cluster/work/vogtlab/Group/slaguna/logs/server_llama_log_batch_{args.batch_index}.txt"
+    labeling_log_path = f"/cluster/work/vogtlab/Group/slaguna/logs/labeling_llama_log_batch_{args.batch_index}.txt"
 
     server_proc = None
 
@@ -31,9 +32,9 @@ def main():
             # "--enforce-eager",
             # "--disable-custom-all-reduce",
             "--host", "localhost",
-            "--port", "8000"
+            "--port", str(args.port)
         ], stdout=server_log, stderr=server_log)
-        time.sleep(120)  # Wait for server to be up
+        time.sleep(100)  # Wait for server to be up
 
         # 2. Run labeling script
         print("Starting labeling script...")
@@ -42,6 +43,7 @@ def main():
                 "python", labeling_script,
                 "--batch_index", str(args.batch_index),
                 "--num_batches", str(args.num_batches),
+                "--port", str(args.port)
                 # "--system_prompt", "You are an AI assistant that helps scoring a system response."
             ], check=True, stdout=labeling_log, stderr=labeling_log)
 

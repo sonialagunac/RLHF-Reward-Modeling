@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--batch_index", type=int, default=0, help="Index of the current batch (starting from 0)")
 parser.add_argument("--num_batches", type=int, default=10, help="How many batches to split the data generation in")
 parser.add_argument("--system_prompt", type=str, default=None)
+parser.add_argument("--port", type=str, default='8000')
 args = parser.parse_args()
 
 # === Config ===
@@ -39,7 +40,7 @@ split = "train"
 max_tokens = 300
 batch_size = 10
 num_batches = args.num_batches
-openai_api_base = "http://localhost:8000/v1"
+openai_api_base = f"http://localhost:{args.port}/v1"
 openai_api_key = "EMPTY"
 client = openai.OpenAI(
     api_key=openai_api_key,
@@ -145,6 +146,9 @@ def parse_scores(text, concepts):
         result_clean = [x if isinstance(x, (float, int)) else 0.5 for x in result]
         result = torch.tensor(result_clean)
         print(f"Parsing string score with 0.5 because of text present")
+    if result.shape != torch.Size([len(concepts)]):
+        print(f"Invalid scores shape: {scores.shape}. Expected: [{len(concepts)}]")
+        result = torch.full((len(concepts),), 0.5)
     return result
 
 

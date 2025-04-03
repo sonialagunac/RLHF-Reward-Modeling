@@ -1,7 +1,8 @@
-from ..utils.utils import load_embeddings, eval_reward_bench
+from utils.utils import load_embeddings, eval_reward_bench
 import datasets
 import pandas as pd
 import wandb
+import torch
 
 # ---------------------------
 # Training Functions
@@ -38,7 +39,7 @@ def validate_regression(model, loss_fn, dataloader, device):
     return avg_loss
 
 
-def train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn, scheduler_gate, dataloader, device, step):
+def train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn, scheduler_gate, dataloader, device, epoch):
     gating_network.train()
     regression_model.eval()  # keep regression model fixed during gating training
     total_loss = 0
@@ -88,14 +89,14 @@ def validate_gating(gating_network, regression_model, val_dl, device):
 
 
 
-def reward_bench_eval(reward_bench_embedding_path, path_reward_bench_data_filter, device, gating_network, regression_model):
+def reward_bench_eval(args, device, gating_network, regression_model):
     # ---------------------------
     # RewardBench Evaluation
     # ---------------------------
     gating_network.eval()
     regression_model.eval()
     print("Evaluating on RewardBench...")
-    reward_bench_embeddings, reward_bench_prompt_embeddings = load_embeddings(reward_bench_embedding_path, device=device)
+    reward_bench_embeddings, reward_bench_prompt_embeddings = load_embeddings(args.reward_bench_embedding_path, device=device)
 
     with torch.no_grad():
         gating_weights_rb_0 = gating_network(reward_bench_prompt_embeddings[:, 0, :].squeeze())
@@ -109,7 +110,7 @@ def reward_bench_eval(reward_bench_embedding_path, path_reward_bench_data_filter
 
     # Load RewardBench dataset metadata
     if args.offline:
-        reward_bench_ds = datasets.load_from_disk(path_reward_bench_data_filter)
+        reward_bench_ds = datasets.load_from_disk(args.path_reward_bench_data_filter)
     else:
         reward_bench_ds = datasets.load_dataset("allenai/reward-bench", split="filtered")
 
