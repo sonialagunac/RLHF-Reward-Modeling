@@ -14,12 +14,12 @@ from torch.utils.data import DataLoader, TensorDataset
 from models.networks import GatingNetwork
 from utils.training import train_regression, validate_regression, train_gating, validate_gating, reward_bench_eval
 from utils.config import parse_args, set_default_paths, init_wandb, set_offline_paths, set_seed
-
+from utils.utils import sanity_check_labels
 
 def main():
     args = parse_args()
     args = set_default_paths(args)
-    
+
     # Set random seed for reproducibility
     set_seed(args.seed)
 
@@ -52,6 +52,9 @@ def main():
     label_data = load_file(args.labels_dir)
     concept_labels = label_data["concepts_label"].float().transpose(0,1)
     
+    if args.sanity_check_labels:
+        concept_labels = sanity_check_labels(concept_labels)
+
     if args.labels_type == 'hugging_face':
         concepts = ["helpfulness", "honesty", "instruction_following", "truthfulness"]
     else:

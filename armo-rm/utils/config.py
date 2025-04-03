@@ -35,8 +35,8 @@ def parse_args():
                         help="Path pattern for embedding safetensors file(s).")
     parser.add_argument("--labels_dir", type=str, default=None,
                         help="Path to labels file safetensors.")
-    parser.add_argument("--labels_type", type=str, default="hugging_face",
-                        help="Label type (e.g. 'hugging_face' or 'model used to label the concepts').")
+    parser.add_argument("--labels_type", type=str, default="phi-3-mini-4k-instruct",
+                        help="Label type (e.g. 'hugging_face' or model used to label the concepts like 'phi-3-mini-4k-instruct' or 'Meta-Llama-3-8B-Instruct').")
     parser.add_argument("--output_dir", type=str, default="/local/home/slaguna/Projects/datasets/RLHF_interp/data_RLHF/ArmoRM",
                         help="Directory to load embeddings, save outputs and model checkpoints.")
     parser.add_argument("--model_name", type=str, default="FsfairX-LLaMA3-RM-v0.1",
@@ -60,6 +60,7 @@ def parse_args():
 
     # Evaluation
     parser.add_argument("--eval_reward_bench", action="store_true", help="If set, evaluate on RewardBench after training")
+    parser.add_argument('--sanity_check_labels', action='store_true', help="Check and fix labels outside in the dataset [0, 1]")
 
     # RewardBench paths
     parser.add_argument("--reward_bench_embedding_path", type=str, default=None,

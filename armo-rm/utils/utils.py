@@ -170,3 +170,15 @@ def eval_reward_bench(df_examples, acc_column="correct"):
         2,
     )
     return scores_per_section, metrics
+
+def sanity_check_labels(concept_labels):
+    invalid_mask = (concept_labels < 0) | (concept_labels > 1)
+    num_invalid = invalid_mask.sum().item()
+
+    if num_invalid > 0:
+        print(f"Found {num_invalid} label values outside [0, 1]. Setting them to 0.5 as fallback.")
+        concept_labels[invalid_mask] = 0.5
+    else:
+        print("All labels within [0, 1].")
+
+    return concept_labels
