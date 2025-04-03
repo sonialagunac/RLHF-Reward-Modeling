@@ -13,12 +13,13 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from models.networks import GatingNetwork
 from utils.training import train_regression, validate_regression, train_gating, validate_gating, reward_bench_eval
-from utils.config import parse_args, init_wandb, set_offline_paths, set_seed
+from utils.config import parse_args, set_default_paths, init_wandb, set_offline_paths, set_seed
 
 
 def main():
     args = parse_args()
-
+    args = set_default_paths(args)
+    
     # Set random seed for reproducibility
     set_seed(args.seed)
 

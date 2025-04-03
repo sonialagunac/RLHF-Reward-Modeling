@@ -3,6 +3,7 @@
 
 # logs
 out_log/
+wandb/
 
 # drafts
 kk*

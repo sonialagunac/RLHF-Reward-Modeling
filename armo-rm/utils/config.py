@@ -31,13 +31,13 @@ def parse_args():
     parser = ArgumentParser()
 
     # Data and paths
-    parser.add_argument("--embeddings_dir", type=str, default="path/to/hf/embeddings.safetensors",
+    parser.add_argument("--embeddings_dir", type=str, default=None,
                         help="Path pattern for embedding safetensors file(s).")
-    parser.add_argument("--labels_dir", type=str, default="path/to/labels.safetensors",
-                        help="Path to labels file.")
+    parser.add_argument("--labels_dir", type=str, default=None,
+                        help="Path to labels file safetensors.")
     parser.add_argument("--labels_type", type=str, default="hugging_face",
                         help="Label type (e.g. 'hugging_face' or 'model used to label the concepts').")
-    parser.add_argument("--output_dir", type=str, default="./outputs",
+    parser.add_argument("--output_dir", type=str, default="/local/home/slaguna/Projects/datasets/RLHF_interp/data_RLHF/ArmoRM",
                         help="Directory to load embeddings, save outputs and model checkpoints.")
     parser.add_argument("--model_name", type=str, default="FsfairX-LLaMA3-RM-v0.1",
                         help="Name of the model used to get the embeddings.")
@@ -62,17 +62,15 @@ def parse_args():
     parser.add_argument("--eval_reward_bench", action="store_true", help="If set, evaluate on RewardBench after training")
 
     # RewardBench paths
-    parser.add_argument("--reward_bench_embedding_path", type=str, default="path/to/hf/reward_bench_embedding.safetensors",
-                        help="Path to RewardBench embedding file")
-    parser.add_argument("--path_reward_bench_data_filter", type=str, default="path/to/hf/reward_bench_data",
+    parser.add_argument("--reward_bench_embedding_path", type=str, default=None,
+                        help="Path to RewardBench embedding safetensors")
+    parser.add_argument("--path_reward_bench_data_filter", type=str, default="/local/home/slaguna/.cache/huggingface/datasets/reward-bench-filtered/",
                         help="Path to RewardBench dataset; for offline cluster use, specify local path")
 
     # Offline mode flag and logging
     parser.add_argument("--offline", action="store_true", help="Use offline (cluster) paths")
-    parser.add_argument("--no_offline", dest="offline", action="store_false", help="Disable offline mode")
-    parser.set_defaults(offline=True)
-    parser.add_argument("--wandb_entity", type=str, default="slaguna", help="Entity to log wandb runs.")
-    parser.add_argument("--wandb_path", type=str, default="path/to/wandb_logs_directory", help="Directory to store wandb outputs.")
+    parser.add_argument("--wandb_entity", type=str, default="interp_rewards_RLHF", help="Entity to log wandb runs.")
+    parser.add_argument("--wandb_path", type=str, default="./wandb", help="Directory to store wandb outputs.")
     parser.add_argument("--experiment_name", type=str, default=None, help="Name to store specific experiment weights.")
     parser.add_argument("--store_weights", action="store_true", help="If set, storing the weights of the models")
     
@@ -92,4 +90,24 @@ def set_offline_paths(args):
     args.reward_bench_embedding_path = os.path.join(args.output_dir, "embeddings", args.model_name, "reward_bench-filtered.safetensors")
     args.path_reward_bench_data_filter = os.path.join(cache_dir, "datasets", "reward-bench-filtered")
     args.wandb_path = "/cluster/work/vogtlab/Group/slaguna/wandb_interp_rewards"
+    args.wandb_entity = "slaguna"
+    return args
+
+# ---------------------------
+# Set Default Paths
+# ---------------------------
+def set_default_paths(args):
+    """Set default paths for embeddings, labels, and RewardBench embeddings if not provided."""
+    if args.reward_bench_embedding_path is None:
+        args.reward_bench_embedding_path = os.path.join(
+            args.output_dir, "embeddings", args.model_name, "reward_bench-filtered.safetensors"
+        )
+    if args.labels_dir is None:
+        args.labels_dir = os.path.join(
+            args.output_dir, "labels", args.labels_type, f"{args.dataset_name}_combined.safetensors"
+        )
+    if args.embeddings_dir is None:
+        args.embeddings_dir = os.path.join(
+            args.output_dir, "embeddings", args.model_name, args.dataset_name + "-train.safetensors"
+        )
     return args
