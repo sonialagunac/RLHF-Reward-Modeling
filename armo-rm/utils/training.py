@@ -59,43 +59,12 @@ def validate_regression(score_projection, beta_head, dataloader, device):
     wandb.log({"regression_val_nll_loss": avg_loss})
     return avg_loss
 
-
-def train_regression_point_estimate(model, optimizer, loss_fn, dataloader, device, epoch, total_epochs):
-    model.train()
-    total_loss = 0
-    for pos, neg, _, _, y in dataloader:
-        pos, neg, y = pos.to(device), neg.to(device), y.to(device)
-        optimizer.zero_grad()
-        pred_diff = model(pos) - model(neg)
-        loss = loss_fn(pred_diff, y)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-    avg_loss = total_loss / len(dataloader)
-    print(f"Epoch {epoch}/{total_epochs} - Regression Train Loss: {avg_loss:.4f}")
-    wandb.log({"regression_train_loss": avg_loss, "epoch": epoch})
-    return avg_loss
-
-
-def validate_regression_point_estimate(model, loss_fn, dataloader, device):
-    model.eval()
-    total_loss = 0
-    with torch.no_grad():
-        for pos, neg, _, _, y in dataloader:
-            pos, neg, y = pos.to(device), neg.to(device), y.to(device)
-            pred_diff = model(pos) - model(neg)
-            loss = loss_fn(pred_diff, y)
-            total_loss += loss.item()
-    avg_loss = total_loss / len(dataloader)
-    print(f"Regression Validation Loss: {avg_loss:.4f}")
-    wandb.log({"regression_val_loss": avg_loss})
-    return avg_loss
-
 # ----------------------------------
 # Training and Eval Gating Functions
 # ----------------------------------
-def train_gating(gating_network, score_projection, optimizer_gate, loss_gate_fn, scheduler_gate, dataloader, device, epoch):
+def train_gating(gating_network, score_projection, beta_head_gate, optimizer_gate, scheduler_gate, dataloader, device, epoch):
     gating_network.train()
+    beta_head_gate.train()
     score_projection.eval()  # keep regression model fixed during gating training
     total_loss = 0
     for pos, neg, pos_prompt, neg_prompt, _ in dataloader:
@@ -105,47 +74,63 @@ def train_gating(gating_network, score_projection, optimizer_gate, loss_gate_fn,
         # Forward pass for positive samples
         weights_pos = gating_network(pos_prompt)
         concept_scores_pos = score_projection(pos)
-        final_scores_pos = torch.sum(concept_scores_pos * weights_pos, dim=-1)
+        final_scores_pos = torch.sum(concept_scores_pos * weights_pos, dim=-1).unsqueeze(-1)
         
         # Forward pass for negative samples
         weights_neg = gating_network(neg_prompt)
         concept_scores_neg = score_projection(neg)
-        final_scores_neg = torch.sum(concept_scores_neg * weights_neg, dim=-1)
+        final_scores_neg = torch.sum(concept_scores_neg * weights_neg, dim=-1).unsqueeze(-1)
         
-        loss_gate = loss_gate_fn(final_scores_pos - final_scores_neg, torch.ones_like(final_scores_pos))
-        loss_gate.backward()
+        alpha, beta = beta_head_gate(final_scores_pos, final_scores_neg)
+
+        # Beta NLL Loss
+        dist = Beta(alpha, beta)
+        eps = 1e-4 #TODO make it a parameter
+        nll = -dist.log_prob((1-eps)*torch.ones_like(final_scores_pos)).mean()
+
+        # Backprop
+        nll.backward()
         optimizer_gate.step()
         scheduler_gate.step()
-        
-        total_loss += loss_gate.item()
+        total_loss += nll.item()
     avg_loss = total_loss / len(dataloader)
     print(f"Gating Training Step {epoch} - Loss: {avg_loss:.4f}")
     wandb.log({"gating_train_loss": avg_loss, "gating_epoch": epoch})
     return avg_loss
 
-def validate_gating(gating_network, score_projection, val_dl, device):
+
+def validate_gating(gating_network, score_projection, beta_head_gate, val_dl, device):
     gating_network.eval()
+    beta_head_gate.eval()
     score_projection.eval()
     with torch.no_grad():
-        val_acc = 0
+        total_loss = 0
         for pos, neg, pos_prompt, neg_prompt, _ in val_dl:
             pos, neg, pos_prompt, neg_prompt = pos.to(device), neg.to(device), pos_prompt.to(device), neg_prompt.to(device)
             weights_val_pos = gating_network(pos_prompt)
             weights_val_neg = gating_network(neg_prompt)
             concept_scores_pos = score_projection(pos) 
             concept_scores_neg = score_projection(neg)
-            final_scores_pos = torch.sum(concept_scores_pos * weights_val_pos, dim=-1) 
-            final_scores_neg = torch.sum(concept_scores_neg * weights_val_neg, dim=-1)
-            acc = ((final_scores_pos - final_scores_neg) > 0).float().mean()
-            val_acc += acc.item()
-        avg_acc = val_acc / len(val_dl)
-        print(f"Final Validation Accuracy (Gating): {avg_acc:.4f}")
-        wandb.log({"gating_val_accuracy": avg_acc})
+            final_scores_pos = torch.sum(concept_scores_pos * weights_val_pos, dim=-1).unsqueeze(-1) 
+            final_scores_neg = torch.sum(concept_scores_neg * weights_val_neg, dim=-1).unsqueeze(-1)
+            alpha, beta = beta_head_gate(final_scores_pos, final_scores_neg)
+
+            # Beta NLL Loss
+            dist = Beta(alpha, beta)
+            eps = 1e-4 #TODO make it a parameter
+            nll = -dist.log_prob((1-eps)*torch.ones_like(final_scores_pos)).mean()
+            total_loss += nll.item()
+    avg_loss = total_loss / len(val_dl)
+    print(f"Gating Validation NLL Loss: {avg_loss:.4f}")
+    wandb.log({"gating_val_nll_loss": avg_loss})
+    return avg_loss
+
 
 
 # ---------------------------
 # RewardBench Evaluation
 # ---------------------------
+# TODO adapt this to the beta distribution
 def reward_bench_eval(args, device, gating_network, regression_model):
     gating_network.eval()
     regression_model.eval()

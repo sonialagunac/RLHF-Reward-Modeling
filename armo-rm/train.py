@@ -68,10 +68,10 @@ def main():
         temperature=args.temperature,
         logit_scale=args.logit_scale,
     ).to(device)
-    
+    beta_head_gate = BetaHead(1).to(device)
     optimizer_gate = torch.optim.AdamW(gating_network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler_gate = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_gate, T_max=args.epochs_gating)
-    loss_gate_fn = nn.BCEWithLogitsLoss()
+    # loss_gate_fn = nn.BCEWithLogitsLoss()
     
     # ---------------------------
     # Regression Training Loop
@@ -96,8 +96,8 @@ def main():
     print("Training gating network...")
     for epoch in tqdm(range(args.epochs_gating)):
         # Here we optimize the gating network while keeping the regression model fixed.
-        train_gating(gating_network, score_projection, optimizer_gate, loss_gate_fn, scheduler_gate, train_dl, device, epoch)
-    validate_gating(gating_network, score_projection, val_dl, device)
+        train_gating(gating_network, score_projection, beta_head_gate, optimizer_gate, scheduler_gate, train_dl, device, epoch)
+    validate_gating(gating_network, score_projection, beta_head_gate, val_dl, device)
     
     # ---------------------------
     # Save Gating Network
