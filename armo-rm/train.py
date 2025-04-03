@@ -84,11 +84,13 @@ def main():
     # ---------------------------
     # Save Regression Weights
     # ---------------------------
-    if args.store_weights:
-        regression_weights = regression_model.weight.detach().cpu()  
+    if args.store_weights:   
         regression_save_path = os.path.join(experiment_folder, f"regression_weights_{args.model_name}_{args.dataset_name}_labels_{args.labels_type}.pt")
-        torch.save({"weight": regression_weights}, regression_save_path) 
+        torch.save(score_projection.state_dict(), regression_save_path) 
         print(f"Saved regression weights to {regression_save_path}")
+        regression_save_path_beta = os.path.join(experiment_folder, f"regression_weights_beta_{args.model_name}_{args.dataset_name}_labels_{args.labels_type}.pt")
+        torch.save(beta_head.state_dict(), regression_save_path_beta) 
+        print(f"Saved regression weights beta to {regression_save_path_beta}")
     
     # ---------------------------
     # Gating Network Training Loop
@@ -106,6 +108,9 @@ def main():
         gating_save_path = os.path.join(experiment_folder, f"gating_network_{args.model_name}_{args.dataset_name}_labels_{args.labels_type}.pt")
         torch.save(gating_network.state_dict(), gating_save_path)
         print(f"Gating Network saved to {gating_save_path}")
+        gating_save_path_beta = os.path.join(experiment_folder, f"gating_network_beta_{args.model_name}_{args.dataset_name}_labels_{args.labels_type}.pt")
+        torch.save(beta_head_gate.state_dict(), gating_save_path_beta)
+        print(f"Gating Network beta saved to {gating_save_path_beta}")
     
     if args.eval_reward_bench:
         reward_bench_eval(args, device, gating_network, regression_model)
