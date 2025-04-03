@@ -32,7 +32,11 @@ scores = []
 for example in tqdm(ds, desc="Examples"):
     c_score_tensor = torch.tensor(example['chosen_ratings'], dtype=torch.float32)
     r_score_tensor = torch.tensor(example["rejected_ratings"], dtype=torch.float32)
-    scores.append((c_score_tensor - r_score_tensor) / max_diff)
+    mask = (c_score_tensor == -1) | (r_score_tensor == -1)  # True where missing
+    diff = (c_score_tensor - r_score_tensor) / max_diff
+    scaled = (diff + 1) / 2
+    scaled[mask] = 0.5  # Set missing concepts to neutral
+    scores.append(scaled)
 combined_tensor = torch.stack(scores, dim=1)
 
 combined_save_path = f"{save_path}_combined.safetensors"

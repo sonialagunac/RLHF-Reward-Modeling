@@ -4,6 +4,7 @@
 # logs
 out_log/
 wandb/
+.vscode/*
 
 # drafts
 kk*
