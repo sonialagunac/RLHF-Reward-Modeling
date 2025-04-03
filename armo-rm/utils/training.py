@@ -3,9 +3,9 @@ import pandas as pd
 import wandb, datasets, torch
 
 
-# ---------------------------
-# Training Functions
-# ---------------------------
+# --------------------------------------
+# Training and Eval Regression Functions
+# --------------------------------------
 def train_regression(model, optimizer, loss_fn, dataloader, device, epoch, total_epochs):
     model.train()
     total_loss = 0
@@ -37,7 +37,9 @@ def validate_regression(model, loss_fn, dataloader, device):
     wandb.log({"regression_val_loss": avg_loss})
     return avg_loss
 
-
+# ----------------------------------
+# Training and Eval Gating Functions
+# ----------------------------------
 def train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn, scheduler_gate, dataloader, device, epoch):
     gating_network.train()
     regression_model.eval()  # keep regression model fixed during gating training
@@ -87,11 +89,10 @@ def validate_gating(gating_network, regression_model, val_dl, device):
         wandb.log({"gating_val_accuracy": avg_acc})
 
 
-
+# ---------------------------
+# RewardBench Evaluation
+# ---------------------------
 def reward_bench_eval(args, device, gating_network, regression_model):
-    # ---------------------------
-    # RewardBench Evaluation
-    # ---------------------------
     gating_network.eval()
     regression_model.eval()
     print("Evaluating on RewardBench...")

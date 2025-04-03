@@ -9,12 +9,11 @@ from tqdm import tqdm
 from safetensors.torch import load_file
 from sklearn.model_selection import train_test_split
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
 
 from models.networks import GatingNetwork
 from utils.training import train_regression, validate_regression, train_gating, validate_gating, reward_bench_eval
 from utils.config import parse_args, set_default_paths, init_wandb, set_offline_paths, set_seed
-from utils.utils import sanity_check_labels
+from utils.data import get_dataloaders
 
 def main():
     args = parse_args()
@@ -42,52 +41,13 @@ def main():
     print(f"Using device: {device}")
     
     # ---------------------------
-    # Load embeddings and labels from safetensors
+    # Load embeddings and labels from safetensors, create dataloaders
     # ---------------------------
-    print("Loading embeddings...")
-    embed_data = load_file(args.embeddings_dir)
-    embeddings = embed_data["embeddings"].float()
-    prompt_embeddings = embed_data["prompt_embeddings"].float()
-    
-    label_data = load_file(args.labels_dir)
-    concept_labels = label_data["concepts_label"].float().transpose(0,1)
-    
-    if args.sanity_check_labels:
-        concept_labels = sanity_check_labels(concept_labels)
-
-    if args.labels_type == 'hugging_face':
-        concepts = ["helpfulness", "honesty", "instruction_following", "truthfulness"]
-    else:
-        concepts = ["helpfulness", "correctness", "coherence", "complexity", "verbosity",
-                    "overall_score", "instruction_following", "truthfulness", "honesty",  
-                    "is_safe", "score", "overall_quality", "judge_lm", "style", "explanation", "readability"]
-    
-    # Get pairwise embeddings
-    pos_embeddings = embeddings[:, 0]       
-    neg_embeddings = embeddings[:, 1] 
-    pos_prompt_embeddings = prompt_embeddings[:, 0]   
-    neg_prompt_embeddings = prompt_embeddings[:, 1]
-    
-    print("Embeddings shape:", embeddings.shape)
-    print("Concept labels shape:", concept_labels.shape)
-    
-    # ---------------------------
-    # Train/Val split & DataLoaders
-    # ---------------------------
-    X_pos_train, X_pos_val, X_neg_train, X_neg_val, X_pos_prompt_train, X_pos_prompt_val, X_neg_prompt_train, X_neg_prompt_val, y_train, y_val = train_test_split(
-        pos_embeddings, neg_embeddings, pos_prompt_embeddings, neg_prompt_embeddings, concept_labels, test_size=0.2, random_state=42
-    )
-    
-    train_ds = TensorDataset(X_pos_train, X_neg_train, X_pos_prompt_train, X_neg_prompt_train, y_train)
-    val_ds = TensorDataset(X_pos_val, X_neg_val, X_pos_prompt_val, X_neg_prompt_val, y_val)
-    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
-    val_dl = DataLoader(val_ds, batch_size=args.batch_size)
+    train_dl, val_dl, input_dim, output_dim, concepts = get_dataloaders(args)
     
     # ---------------------------
     # Initialize Regression Model and Optimizer
     # ---------------------------
-    input_dim = pos_embeddings.shape[1]
-    output_dim = concept_labels.shape[1]  
     regression_model = nn.Linear(input_dim, output_dim, bias=False).to(device)
     optimizer = torch.optim.AdamW(regression_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     loss_fn = nn.MSELoss()
@@ -96,8 +56,8 @@ def main():
     # Initialize Gating Network and Optimizer
     # ---------------------------
     gating_network = GatingNetwork(
-        in_features=X_pos_prompt_train.shape[-1],
-        out_features=y_train.shape[-1],
+        in_features=input_dim,
+        out_features=output_dim,
         n_hidden=args.n_hidden,
         hidden_dim=args.hidden_dim,
         dropout=args.dropout,

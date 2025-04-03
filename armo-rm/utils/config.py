@@ -35,7 +35,7 @@ def parse_args():
                         help="Path pattern for embedding safetensors file(s).")
     parser.add_argument("--labels_dir", type=str, default=None,
                         help="Path to labels file safetensors.")
-    parser.add_argument("--labels_type", type=str, default="phi-3-mini-4k-instruct",
+    parser.add_argument("--labels_type", type=str, default="hugging_face",
                         help="Label type (e.g. 'hugging_face' or model used to label the concepts like 'phi-3-mini-4k-instruct' or 'Meta-Llama-3-8B-Instruct').")
     parser.add_argument("--output_dir", type=str, default="/local/home/slaguna/Projects/datasets/RLHF_interp/data_RLHF/ArmoRM",
                         help="Directory to load embeddings, save outputs and model checkpoints.")
@@ -47,8 +47,8 @@ def parse_args():
     # Training parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--device", type=int, default=0, help="CUDA device id (set -1 for CPU)")
-    parser.add_argument("--epochs_regression", type=int, default=1, help="Number of epochs for regression training")
-    parser.add_argument("--epochs_gating", type=int, default=1, help="Number of epochs for gating network training")
+    parser.add_argument("--epochs_regression", type=int, default=100, help="Number of epochs for regression training")
+    parser.add_argument("--epochs_gating", type=int, default=100, help="Number of epochs for gating network training")
     parser.add_argument("--batch_size", type=int, default=1024, help="Batch size for training")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate for gating network")
@@ -86,7 +86,7 @@ def set_offline_paths(args):
     args.model_name = "FsfairX-LLaMA3-RM-v0.1"
     args.output_dir = "/cluster/dataset/vogtlab/Group/slaguna/data_RLHF/ArmoRM"
     args.embeddings_dir = os.path.join(args.output_dir, "embeddings", args.model_name, args.dataset_name + "-train.safetensors")
-    args.labels_type = "hugging_face" #or "phi-3-mini-4k-instruct" or "llama"
+    args.labels_type = "hugging_face"
     args.labels_dir = os.path.join(args.output_dir, "labels", args.labels_type, f"{args.dataset_name}_combined.safetensors")
     args.reward_bench_embedding_path = os.path.join(args.output_dir, "embeddings", args.model_name, "reward_bench-filtered.safetensors")
     args.path_reward_bench_data_filter = os.path.join(cache_dir, "datasets", "reward-bench-filtered")
@@ -95,7 +95,7 @@ def set_offline_paths(args):
     return args
 
 # ---------------------------
-# Set Default Paths
+# Set Default Paths if None
 # ---------------------------
 def set_default_paths(args):
     """Set default paths for embeddings, labels, and RewardBench embeddings if not provided."""
