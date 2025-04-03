@@ -4,28 +4,24 @@
 
 import os
 import torch
-import numpy as np
-import pandas as pd
-import wandb
 import datetime
-import datasets
-from glob import glob
 from tqdm import tqdm
-from argparse import ArgumentParser
 from safetensors.torch import load_file
 from sklearn.model_selection import train_test_split
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from models.networks import GatingNetwork
-
 from utils.training import train_regression, validate_regression, train_gating, validate_gating, reward_bench_eval
 from utils.config import parse_args, init_wandb, set_offline_paths, set_seed
 
 
 def main():
     args = parse_args()
-    
+
+    # Set random seed for reproducibility
+    set_seed(args.seed)
+
     # Set offline (cluster) paths if required
     if args.offline:
         args = set_offline_paths(args)

@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
-import wandb
-import os
+import torch, os, random, wandb
+import numpy as np
 
 # ---------------------------
 # Set up Weights & Biases
@@ -23,6 +23,7 @@ def set_seed(seed: int):
     torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
     print(f"Seeds set to {seed}")
+
 # ---------------------------
 # Arguments
 # ---------------------------
@@ -44,6 +45,7 @@ def parse_args():
                         help="Name of the dataset used.")
 
     # Training parameters
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--device", type=int, default=0, help="CUDA device id (set -1 for CPU)")
     parser.add_argument("--epochs_regression", type=int, default=1, help="Number of epochs for regression training")
     parser.add_argument("--epochs_gating", type=int, default=1, help="Number of epochs for gating network training")
