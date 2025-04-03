@@ -1,6 +1,5 @@
 # ===============================
-# Unified Training Script
-# Ridge Regression + Gating Network
+# Interpretable Rewards: Regression + Gating Network
 # ===============================
 
 import os
@@ -8,6 +7,7 @@ import torch
 import numpy as np
 import pandas as pd
 import wandb
+import datetime
 import datasets
 from glob import glob
 from tqdm import tqdm
@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from models.networks import GatingNetwork
 
 from utils.training import train_regression, validate_regression, train_gating, validate_gating, reward_bench_eval
-from utils.config import parse_args, init_wandb, set_offline_paths
+from utils.config import parse_args, init_wandb, set_offline_paths, set_seed
 
 
 def main():
@@ -30,6 +30,13 @@ def main():
     if args.offline:
         args = set_offline_paths(args)
     
+    if args.store_weights:
+        # Create output directory for this experiment
+        experiment_name = args.experiment_name if hasattr(args, "experiment_name") and args.experiment_name else "default_experiment"
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        experiment_folder = os.path.join(args.output_dir, "models", f"{experiment_name}_{timestamp}")
+        os.makedirs(experiment_folder, exist_ok=True)
+
     # Initialize Weights & Biases
     init_wandb(args)
     
@@ -99,7 +106,7 @@ def main():
     ).to(device)
     
     optimizer_gate = torch.optim.AdamW(gating_network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler_gate = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_gate, T_max=args.n_steps)
+    scheduler_gate = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_gate, T_max=args.epochs_gating)
     loss_gate_fn = nn.BCEWithLogitsLoss()
     
     # ---------------------------
@@ -113,11 +120,11 @@ def main():
     # ---------------------------
     # Save Regression Weights
     # ---------------------------
-    regression_weights = regression_model.weight.detach().cpu()  
-    regression_save_path = os.path.join(args.output_dir, "regression_weights", f"{args.model_path.split('/')[-1]}_{args.dataset_path.split('/')[-1]}_labels{args.labels_type}.pt")
-    os.makedirs(os.path.dirname(regression_save_path), exist_ok=True)
-    torch.save({"weight": regression_weights}, regression_save_path) 
-    print(f"Saved regression weights to {regression_save_path}")
+    if args.store_weights:
+        regression_weights = regression_model.weight.detach().cpu()  
+        regression_save_path = os.path.join(experiment_folder, f"regression_weights_{args.model_name}_{args.dataset_name}_labels_{args.labels_type}.pt")
+        torch.save({"weight": regression_weights}, regression_save_path) 
+        print(f"Saved regression weights to {regression_save_path}")
     
     # ---------------------------
     # Gating Network Training Loop
@@ -125,19 +132,19 @@ def main():
     print("Training gating network...")
     for epoch in tqdm(range(args.epochs_gating)):
         # Here we optimize the gating network while keeping the regression model fixed.
-        train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn, scheduler_gate, train_dl, device, step)
+        train_gating(gating_network, regression_model, optimizer_gate, loss_gate_fn, scheduler_gate, train_dl, device, epoch)
     validate_gating(gating_network, regression_model, val_dl, device)
     
     # ---------------------------
     # Save Gating Network
     # ---------------------------
-    gating_save_path = os.path.join(args.output_dir, "gating_networks", f"{args.model_path.split('/')[-1]}_{args.dataset_path.split('/')[-1]}_labels{args.labels_type}.pt")
-    os.makedirs(os.path.dirname(gating_save_path), exist_ok=True)
-    torch.save(gating_network.state_dict(), gating_save_path)
-    print(f"Gating Network saved to {gating_save_path}")
+    if args.store_weights:
+        gating_save_path = os.path.join(experiment_folder, f"gating_network_{args.model_name}_{args.dataset_name}_labels_{args.labels_type}.pt")
+        torch.save(gating_network.state_dict(), gating_save_path)
+        print(f"Gating Network saved to {gating_save_path}")
     
     if args.eval_reward_bench:
-        reward_bench_eval(args.reward_bench_embedding_path, args.path_reward_bench_data_filter, device, gating_network, regression_model)
+        reward_bench_eval(args, device, gating_network, regression_model)
 
 
 if __name__ == "__main__":
