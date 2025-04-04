@@ -24,23 +24,16 @@ def main(cfg: DictConfig):
     # Fill derived paths (embeddings, labels, etc.)
     apply_path_defaults(cfg)
 
-    # Create output directory for experiment
-    if cfg.store_weights:
-        experiment_name = cfg.experiment_name
-        experiment_folder = os.path.join(cfg.data.output_dir, "models", f"{experiment_name}")
-        os.makedirs(experiment_folder, exist_ok=True)
-    else:
-        experiment_folder = None
-
-    # Init Weights & Biases logging
-    init_wandb(cfg)
-
     # Set device
     device = f"cuda:{cfg.device}" if cfg.device >= 0 and torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
+    # Init Weights & Biases logging
+    init_wandb(cfg)
+
+
     # Load dataset
-    train_dl, val_dl, input_dim, output_dim, concepts = get_dataloaders(cfg)
+    train_dl, val_dl, _, input_dim, output_dim, concepts = get_dataloaders(cfg)
 
     # Initialize regression model + optimizer
     score_projection = ScoreProjection(input_dim, output_dim).to(device)
@@ -62,6 +55,12 @@ def main(cfg: DictConfig):
     gate_params = list(gating_network.parameters()) + list(beta_head_pref.parameters())
     optimizer_gate = torch.optim.AdamW(gate_params, lr=cfg.model.lr, weight_decay=cfg.model.weight_decay)
     scheduler_gate = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_gate, T_max=cfg.model.epochs_gating)
+
+    # Create output directory for experiment
+    if cfg.store_weights:
+        experiment_name = cfg.experiment_name
+        experiment_folder = os.path.join(cfg.data.output_dir, "models", f"{experiment_name}")
+        os.makedirs(experiment_folder, exist_ok=True)
 
     # ---------------------------
     # Train regression model

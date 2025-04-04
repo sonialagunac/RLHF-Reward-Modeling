@@ -8,3 +8,6 @@ embeddings_dir: null #Path for embedding safetensors file(s), if nul set to defa
 # Concept labels config
 labels_dir: null # Path to labels file safetensors, if nul set to default.
 sanity_check_labels: false # Check and fix labels outside [0, 1] in the dataset 
+
+# Dataset splitting
+split_ratio: [0.8, 0.1, 0.1]  # train, val, test

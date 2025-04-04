@@ -163,7 +163,6 @@ def inference_active_learning(gating_network, score_projection, beta_head, beta_
 # ---------------------------
 # RewardBench Evaluation
 # ---------------------------
-# TODO adapt this to the beta distribution
 def reward_bench_eval(cfg, device, gating_network, score_projection, beta_head_pref):
     gating_network.eval()
     score_projection.eval()
