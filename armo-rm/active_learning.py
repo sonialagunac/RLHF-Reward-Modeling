@@ -62,13 +62,13 @@ def main(cfg: DictConfig):
         os.makedirs(experiment_folder, exist_ok=True)
         print("Training regression model ...")
         for epoch in tqdm(range(cfg.model.epochs_regression)):
-            train_regression(score_projection, beta_head, optimizer, updated_train_dl, device, epoch, cfg.model.epochs_regression)
+            train_regression(score_projection, beta_head, optimizer, train_dl, device, epoch, cfg.model)
         validate_regression(score_projection, beta_head, test_dl, device)
 
-        print("Retraining gating network ...")
+        print("Training gating network ...")
         for epoch in tqdm(range(cfg.model.epochs_gating)):
-            train_gating(gating_network, score_projection, beta_head_pref, optimizer_gate, scheduler_gate, updated_train_dl, device, epoch)
-        validate_gating(gating_network, score_projection, beta_head_pref, test_dl, device)
+            train_gating(gating_network, score_projection, beta_head_pref, optimizer_gate, scheduler_gate, train_dl, device, epoch, cfg.model)
+        validate_gating(gating_network, score_projection, beta_head_pref, test_dl, device, cfg.model)
 
     else:
         # Load weights from pretrained reward model
@@ -116,19 +116,29 @@ def main(cfg: DictConfig):
     updated_train_dl = DataLoader(updated_train_ds, batch_size=cfg.model.batch_size, shuffle=True)
 
 
-    print("Rraining regression model on updated dataset...")
+    print("Retraining regression model on updated dataset...")
     for epoch in tqdm(range(cfg.model.epochs_regression)):
-        train_regression(score_projection, beta_head, optimizer, updated_train_dl, device, epoch, cfg.model.epochs_regression)
+        train_regression(score_projection, beta_head, optimizer, updated_train_dl, device, epoch, cfg.model)
     validate_regression(score_projection, beta_head, test_dl, device)
+
+    # Save regression model
+    if cfg.store_weights:
+        torch.save(score_projection.state_dict(), os.path.join(experiment_folder, f"post_AL_regression_weights_{cfg.data.model_name}_{cfg.data.dataset_name}_labels_{cfg.data.labels_type}.pt"))
+        torch.save(beta_head.state_dict(), os.path.join(experiment_folder, f"post_AL_regression_weights_beta_{cfg.data.model_name}_{cfg.data.dataset_name}_labels_{cfg.data.labels_type}.pt"))
 
     print("Retraining gating network...")
     for epoch in tqdm(range(cfg.model.epochs_gating)):
-        train_gating(gating_network, score_projection, beta_head_pref, optimizer_gate, scheduler_gate, updated_train_dl, device, epoch)
-    validate_gating(gating_network, score_projection, beta_head_pref, test_dl, device)
+        train_gating(gating_network, score_projection, beta_head_pref, optimizer_gate, scheduler_gate, updated_train_dl, device, epoch, cfg.model)
+    validate_gating(gating_network, score_projection, beta_head_pref, test_dl, device, cfg.model)
+
+    # Save gating model
+    if cfg.store_weights:
+        torch.save(gating_network.state_dict(), os.path.join(experiment_folder, f"post_AL_gating_network_{cfg.data.model_name}_{cfg.data.dataset_name}_labels_{cfg.data.labels_type}.pt"))
+        torch.save(beta_head_pref.state_dict(), os.path.join(experiment_folder, f"post_AL_gating_network_beta_{cfg.data.model_name}_{cfg.data.dataset_name}_labels_{cfg.data.labels_type}.pt"))
 
     # Optionally run RewardBench evaluation
     if cfg.eval_reward_bench:
-        reward_bench_eval(cfg, device, gating_network, score_projection, beta_head)
+        reward_bench_eval(cfg, device, gating_network, score_projection, beta_head_pref)
 
 
 if __name__ == "__main__":

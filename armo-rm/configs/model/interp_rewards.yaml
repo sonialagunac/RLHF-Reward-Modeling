@@ -11,3 +11,6 @@ dropout: 0.2 # Dropout rate for gating network"
 hidden_dim: 1024 # Hidden dimension for gating network layers"
 temperature: 10 # Temperature for softmax in gating network
 logit_scale: 1.0
+
+# Parameters for beta distribution
+eps: 1e-4 # Epsilon to avoid logs going to nan or inf

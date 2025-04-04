@@ -1,7 +1,8 @@
 from utils.utils import load_embeddings, eval_reward_bench, compute_variance
 import pandas as pd
 import numpy as np
-import wandb, datasets, torch, tqdm
+import wandb, datasets, torch
+from tqdm import tqdm
 from torch.distributions import Beta
 
 # --------------------------------------
@@ -9,7 +10,7 @@ from torch.distributions import Beta
 # --------------------------------------
 
 
-def train_regression(score_projection, beta_head, optimizer, dataloader, device, epoch, total_epochs):
+def train_regression(score_projection, beta_head, optimizer, dataloader, device, epoch, cfg_model):
     score_projection.train()
     beta_head.train()
     total_loss = 0
@@ -25,8 +26,7 @@ def train_regression(score_projection, beta_head, optimizer, dataloader, device,
 
         # Beta NLL Loss
         dist = Beta(alpha, beta)
-        eps = 1e-4 #TODO make it a parameter
-        y = y.clamp(eps, 1 - eps) #Clamp y to avoid log(0) or log(1)
+        y = y.clamp(cfg_model.eps, 1 - cfg_model.eps) #Clamp y to avoid log(0) or log(1)
         nll = -dist.log_prob(y).mean()
 
         # Backprop
@@ -35,7 +35,7 @@ def train_regression(score_projection, beta_head, optimizer, dataloader, device,
         total_loss += nll.item()
 
     avg_loss = total_loss / len(dataloader)
-    print(f"Epoch {epoch}/{total_epochs} - Regression NLL Loss: {avg_loss:.4f}")
+    tqdm.write(f"Epoch {epoch}/{cfg_model.epochs_regression} - Regression NLL Loss: {avg_loss:.4f}")
     wandb.log({"regression_train_nll_loss": avg_loss, "epoch": epoch})
     return avg_loss
 
@@ -63,7 +63,7 @@ def validate_regression(score_projection, beta_head, dataloader, device):
 # ----------------------------------
 # Training and Eval Gating Functions
 # ----------------------------------
-def train_gating(gating_network, score_projection, beta_head_gate, optimizer_gate, scheduler_gate, dataloader, device, epoch):
+def train_gating(gating_network, score_projection, beta_head_gate, optimizer_gate, scheduler_gate, dataloader, device, epoch, cfg_model):
     gating_network.train()
     beta_head_gate.train()
     score_projection.eval()  # keep regression model fixed during gating training
@@ -86,8 +86,7 @@ def train_gating(gating_network, score_projection, beta_head_gate, optimizer_gat
 
         # Beta NLL Loss
         dist = Beta(alpha, beta)
-        eps = 1e-4 #TODO make it a parameter
-        nll = -dist.log_prob((1-eps)*torch.ones_like(final_scores_pos)).mean()
+        nll = -dist.log_prob((1-cfg_model.eps)*torch.ones_like(final_scores_pos)).mean()
 
         # Backprop
         nll.backward()
@@ -95,12 +94,12 @@ def train_gating(gating_network, score_projection, beta_head_gate, optimizer_gat
         scheduler_gate.step()
         total_loss += nll.item()
     avg_loss = total_loss / len(dataloader)
-    print(f"Gating Training Step {epoch} - Loss: {avg_loss:.4f}")
+    tqdm.write(f"Gating Training Step {epoch} - Loss: {avg_loss:.4f}")
     wandb.log({"gating_train_loss": avg_loss, "gating_epoch": epoch})
     return avg_loss
 
 
-def validate_gating(gating_network, score_projection, beta_head_gate, val_dl, device):
+def validate_gating(gating_network, score_projection, beta_head_gate, val_dl, device, cfg_model):
     gating_network.eval()
     beta_head_gate.eval()
     score_projection.eval()
@@ -118,8 +117,7 @@ def validate_gating(gating_network, score_projection, beta_head_gate, val_dl, de
 
             # Beta NLL Loss
             dist = Beta(alpha, beta)
-            eps = 1e-4 #TODO make it a parameter
-            nll = -dist.log_prob((1-eps)*torch.ones_like(final_scores_pos)).mean()
+            nll = -dist.log_prob((1-cfg_model.eps)*torch.ones_like(final_scores_pos)).mean()
             total_loss += nll.item()
     avg_loss = total_loss / len(val_dl)
     print(f"Gating Validation NLL Loss: {avg_loss:.4f}")
@@ -166,27 +164,29 @@ def inference_active_learning(gating_network, score_projection, beta_head, beta_
 # RewardBench Evaluation
 # ---------------------------
 # TODO adapt this to the beta distribution
-def reward_bench_eval(args, device, gating_network, regression_model):
+def reward_bench_eval(cfg, device, gating_network, score_projection, beta_head_pref):
     gating_network.eval()
-    regression_model.eval()
+    score_projection.eval()
+    beta_head_pref.eval()
     print("Evaluating on RewardBench...")
-    reward_bench_embeddings, reward_bench_prompt_embeddings = load_embeddings(args.reward_bench_embedding_path, device=device)
+    reward_bench_embeddings, reward_bench_prompt_embeddings = load_embeddings(cfg.reward_bench_embedding_path, device=device)
 
     with torch.no_grad():
         gating_weights_rb_0 = gating_network(reward_bench_prompt_embeddings[:, 0, :].squeeze())
-        concept_scores_rb_0 = regression_model(reward_bench_embeddings[:, 0, :].squeeze()) 
-        final_scores_rb_0 = torch.sum(concept_scores_rb_0 * gating_weights_rb_0, dim=-1)
+        concept_scores_rb_0 = score_projection(reward_bench_embeddings[:, 0, :].squeeze()) 
+        final_scores_rb_0 = torch.sum(concept_scores_rb_0 * gating_weights_rb_0, dim=-1).unsqueeze(-1)
 
         gating_weights_rb_1 = gating_network(reward_bench_prompt_embeddings[:, 1, :].squeeze())
-        concept_scores_rb_1 = regression_model(reward_bench_embeddings[:, 1, :].squeeze()) 
-        final_scores_rb_1 = torch.sum(concept_scores_rb_1 * gating_weights_rb_1, dim=-1)
-        correct = (final_scores_rb_0 > final_scores_rb_1).float()
+        concept_scores_rb_1 = score_projection(reward_bench_embeddings[:, 1, :].squeeze()) 
+        final_scores_rb_1 = torch.sum(concept_scores_rb_1 * gating_weights_rb_1, dim=-1).unsqueeze(-1)
+        
+        alpha, beta = beta_head_pref(final_scores_rb_0, final_scores_rb_1)
+        dist = Beta(alpha, beta)
+        mean = dist.mean # Using the mean as prediction, another alternative is to sample
+        correct = (mean > 0.5).float().squeeze()
 
     # Load RewardBench dataset metadata
-    if args.offline:
-        reward_bench_ds = datasets.load_from_disk(args.path_reward_bench_data_filter)
-    else:
-        reward_bench_ds = datasets.load_dataset("allenai/reward-bench", split="filtered")
+    reward_bench_ds = datasets.load_from_disk(cfg.path_reward_bench_data_filter)
 
     df_examples = pd.DataFrame({
         "subset": reward_bench_ds["subset"],

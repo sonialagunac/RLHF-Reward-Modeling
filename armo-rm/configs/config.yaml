@@ -20,7 +20,7 @@ wandb_path: "./wandb" # Directory to store wandb outputs
 #  Eval RewardBench
 eval_reward_bench: false # If set, evaluate on RewardBench after training
 reward_bench_embedding_path: null # Path for embedding safetensors file(s), if nul set to default.
-path_reward_bench_data_filter: "/local/home/slaguna/.cache/huggingface/datasets/reward-bench-filtered/" # Path to RewardBench dataset, dataset_split filtered
+path_reward_bench_data_filter: "/local/home/slaguna/.cache/huggingface/datasets/reward-bench-filtered/" # Path to RewardBench dataset, dataset_split filtered (can be downlaoded from HF as ("allenai/reward-bench", split="filtered"))
 
 # Silence hydra
 hydra:

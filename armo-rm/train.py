@@ -58,8 +58,8 @@ def main(cfg: DictConfig):
         temperature=cfg.model.temperature,
         logit_scale=cfg.model.logit_scale,
     ).to(device)
-    beta_head_gate = BetaHead(1).to(device)
-    gate_params = list(gating_network.parameters()) + list(beta_head_gate.parameters())
+    beta_head_pref = BetaHead(1).to(device)
+    gate_params = list(gating_network.parameters()) + list(beta_head_pref.parameters())
     optimizer_gate = torch.optim.AdamW(gate_params, lr=cfg.model.lr, weight_decay=cfg.model.weight_decay)
     scheduler_gate = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_gate, T_max=cfg.model.epochs_gating)
 
@@ -68,7 +68,7 @@ def main(cfg: DictConfig):
     # ---------------------------
     print("Training multivariate regression model on concept scores...")
     for epoch in tqdm(range(cfg.model.epochs_regression)):
-        train_regression(score_projection, beta_head, optimizer, train_dl, device, epoch, cfg.model.epochs_regression)
+        train_regression(score_projection, beta_head, optimizer, train_dl, device, epoch, cfg.model)
     validate_regression(score_projection, beta_head, val_dl, device)
 
     # Save regression model
@@ -81,13 +81,13 @@ def main(cfg: DictConfig):
     # ---------------------------
     print("Training gating network...")
     for epoch in tqdm(range(cfg.model.epochs_gating)):
-        train_gating(gating_network, score_projection, beta_head_gate, optimizer_gate, scheduler_gate, train_dl, device, epoch)
-    validate_gating(gating_network, score_projection, beta_head_gate, val_dl, device)
+        train_gating(gating_network, score_projection, beta_head_pref, optimizer_gate, scheduler_gate, train_dl, device, epoch, cfg.model)
+    validate_gating(gating_network, score_projection, beta_head_pref, val_dl, device, cfg.model)
 
     # Save gating model
     if cfg.store_weights:
         torch.save(gating_network.state_dict(), os.path.join(experiment_folder, f"gating_network_{cfg.data.model_name}_{cfg.data.dataset_name}_labels_{cfg.data.labels_type}.pt"))
-        torch.save(beta_head_gate.state_dict(), os.path.join(experiment_folder, f"gating_network_beta_{cfg.data.model_name}_{cfg.data.dataset_name}_labels_{cfg.data.labels_type}.pt"))
+        torch.save(beta_head_pref.state_dict(), os.path.join(experiment_folder, f"gating_network_beta_{cfg.data.model_name}_{cfg.data.dataset_name}_labels_{cfg.data.labels_type}.pt"))
 
     # RewardBench evaluation
     if cfg.eval_reward_bench:
