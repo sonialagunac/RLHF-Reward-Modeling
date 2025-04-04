@@ -1,0 +1,31 @@
+# ===================================
+# Hydra config.yaml for Interpretable Rewards
+# ===================================
+defaults:
+  - data: ultrafeedback     # Load data-specific config
+  - model: interp_rewards   # Load model-specific config
+  - override hydra/job_logging: disabled
+
+# Reproducibility
+seed: 42
+device: 0 # CUDA device id (set -1 for CPU)
+
+# Logging
+experiment_name: "default_experiment" #Name to store specific experiment weights
+experiment_name_al: "default_experiment_20250403_142410" #Name of experiment to load previous model from in AL, if null, no previous model is loaded
+store_weights: true # If set, storing the weights of the models
+wandb_entity: "interp_rewards_RLHF"
+wandb_path: "./wandb" # Directory to store wandb outputs
+
+#  Eval RewardBench
+eval_reward_bench: false # If set, evaluate on RewardBench after training
+reward_bench_embedding_path: null # Path for embedding safetensors file(s), if nul set to default.
+path_reward_bench_data_filter: "/local/home/slaguna/.cache/huggingface/datasets/reward-bench-filtered/" # Path to RewardBench dataset, dataset_split filtered
+
+# Silence hydra
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false

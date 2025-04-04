@@ -1,0 +1,10 @@
+# Settings for ETH cluster, ignore otherwise
+defaults:
+  - config  # Inherit base model/training setup
+
+data:
+  output_dir: "/cluster/dataset/vogtlab/Group/slaguna/data_RLHF/ArmoRM"
+
+path_reward_bench_data_filter: "/cluster/dataset/vogtlab/Group/slaguna/huggingface/datasets/reward-bench-filtered"
+wandb_entity: "slaguna"
+wandb_path: "/cluster/work/vogtlab/Group/slaguna/wandb_interp_rewards"

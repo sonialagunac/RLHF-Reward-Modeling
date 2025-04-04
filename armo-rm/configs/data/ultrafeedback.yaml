@@ -1,0 +1,6 @@
+defaults:
+  - default  # Inherit from data/default.yaml
+
+dataset_name: "UltraFeedback-preference-standard"
+labels_type: "hugging_face" # Label type (e.g. 'hugging_face' or model used to label the concepts like 'phi-3-mini-4k-instruct' or 'Meta-Llama-3-8B-Instruct').
+

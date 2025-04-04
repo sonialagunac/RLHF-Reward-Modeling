@@ -1,0 +1,10 @@
+# Base Data Config
+output_dir: "/local/home/slaguna/Projects/datasets/RLHF_interp/data_RLHF/ArmoRM" # Directory to load embeddings, save outputs and model checkpoints.
+
+# Embeddings config
+model_name: "FsfairX-LLaMA3-RM-v0.1" # Name of the model used to get the embeddings.
+embeddings_dir: null #Path for embedding safetensors file(s), if nul set to default.
+
+# Concept labels config
+labels_dir: null # Path to labels file safetensors, if nul set to default.
+sanity_check_labels: false # Check and fix labels outside [0, 1] in the dataset 

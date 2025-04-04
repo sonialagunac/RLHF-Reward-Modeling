@@ -1,0 +1,13 @@
+defaults:
+  - default  # Inherit base model/training setup
+
+#  Regression Model Config
+epochs_regression: 2
+
+# Gating Model Config
+epochs_gating: 2
+n_hidden: 3 # Number of hidden layers in the gating network
+dropout: 0.2 # Dropout rate for gating network"
+hidden_dim: 1024 # Hidden dimension for gating network layers"
+temperature: 10 # Temperature for softmax in gating network
+logit_scale: 1.0
