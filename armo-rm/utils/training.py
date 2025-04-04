@@ -134,7 +134,7 @@ def inference_active_learning(gating_network, score_projection, beta_head, beta_
     all_indices = []
 
     # Inference on test set
-    for i, (pos, neg, pos_prompt, neg_prompt, y) in enumerate(tqdm(test_dl)):
+    for i, (pos, neg, pos_prompt, neg_prompt, y) in enumerate(test_dl):
         pos, neg, pos_prompt, neg_prompt = pos.to(device), neg.to(device), pos_prompt.to(device), neg_prompt.to(device)
         with torch.no_grad():
             pos_out = score_projection(pos)

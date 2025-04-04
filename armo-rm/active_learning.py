@@ -6,7 +6,7 @@ import random
 import os
 from tqdm import tqdm
 from models.networks import ScoreProjection, GatingNetwork, BetaHead
-from utils.config import parse_args, set_default_paths, set_offline_paths, set_seed
+from utils.config import parse_args, set_default_paths, set_offline_paths, set_seed, init_wandb
 from utils.training import train_regression, validate_regression, train_gating, validate_gating, inference_active_learning, reward_bench_eval
 from utils.data import get_dataloaders
 
@@ -18,12 +18,12 @@ def main():
         args = set_offline_paths(args)
     set_seed(args.seed)
     device = f"cuda:{args.device}" if args.device >= 0 and torch.cuda.is_available() else "cpu"
-   
+    init_wandb(args)
+
    # TODO instead of train_dl, split in test val train and use the test here!
     train_dl, val_dl, input_dim, output_dim, concepts = get_dataloaders(args) 
     test_dl = val_dl
-    old_train_ds = train_dl
-    # Assume you have stored model weights paths
+    old_train_ds = train_dl.dataset   # Assume you have stored model weights paths
     #TODO automate this path
     experiment_name_dir = "default_experiment_20250403_142410"
     experiment_folder = os.path.join(args.output_dir, "models", experiment_name_dir)
