@@ -147,7 +147,7 @@ def parse_scores(text, concepts):
         result = torch.tensor(result_clean)
         print(f"Parsing string score with 0.5 because of text present")
     if result.shape != torch.Size([len(concepts)]):
-        print(f"Invalid scores shape: {scores.shape}. Expected: [{len(concepts)}]")
+        print(f"Invalid scores shape: {result.shape}. Expected: [{len(concepts)}]")
         result = torch.full((len(concepts),), 0.5)
     return result
 
