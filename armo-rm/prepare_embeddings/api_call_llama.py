@@ -11,7 +11,7 @@ parser.add_argument("--port", type=int, default=8000)
 args = parser.parse_args()
 
 # === Paths ===
-model_path = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/phi-3-mini-4k-instruct"
+model_path = "/cluster/dataset/vogtlab/Group/slaguna/huggingface/models--meta-llama--Meta-Llama-3-8B-Instruct/snapshots/5f0b02c75b57c5855da9ae460ce51323ea669d8a/"
 labeling_script = "data_generation_vllm_llama.py"
 
 def main():
