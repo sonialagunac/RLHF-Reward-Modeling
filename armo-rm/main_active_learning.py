@@ -4,6 +4,7 @@ import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader, TensorDataset, ConcatDataset
 import hydra
+from collections import defaultdict
 from omegaconf import DictConfig, OmegaConf
 
 from utils.config import apply_path_defaults, init_wandb, set_seed, get_models
@@ -12,7 +13,7 @@ from utils.training import (
     train_gating, validate_gating,
     inference_active_learning, reward_bench_eval,
 )
-from utils.data import get_dataloaders
+from utils.data import get_dataloaders, update_dataset
 from utils.acquisition import select_acquisition_indices
 
 @hydra.main(config_path="configs", config_name="config", version_base=None)
@@ -93,7 +94,6 @@ def main(cfg: DictConfig):
     test_dataset = test_dl.dataset 
 
     best_val_loss = validate_gating(gating_network, score_projection, beta_head_pref, val_dl, device, cfg.model)
-
     patience_counter = 0
 
     for iteration in range(cfg.model.max_iters):
@@ -101,34 +101,20 @@ def main(cfg: DictConfig):
 
         test_dl = DataLoader(test_dataset, batch_size=cfg.model.batch_size, shuffle=False)
 
-        uncertainties_p, uncertainties_c = inference_active_learning(
+        means_c, _, uncertainties_c, uncertainties_p = inference_active_learning(
             gating_network, score_projection, beta_head, beta_head_pref, test_dl, device
         )
         
-        # Select samples based on acquisition strategy
-        selected_indices = select_acquisition_indices(
+        # Select samples based on acquisition strategy and update dataset
+        selected_tuples = select_acquisition_indices(
             strategy=cfg.model.strategy,
             uncertainties_p=uncertainties_p,
             uncertainties_c=uncertainties_c,
-            all_indices=np.arange(len(uncertainties_c)),
-            n_samples=cfg.model.n_samples
+            all_indices=np.arange(uncertainties_c.shape[0]),
+            n_samples=cfg.model.n_samples,
+            n_concepts=cfg.model.n_concepts or uncertainties_c.shape[-1], 
         )
-        # Extract new samples
-        new_samples = [test_dl.dataset[idx] for idx in selected_indices]
-        test_dataset = torch.utils.data.Subset(test_dataset, list(set(np.arange(len(uncertainties_c))) - set(selected_indices)))
-
-        new_ds = TensorDataset(
-            torch.stack([s[0] for s in new_samples]),
-            torch.stack([s[1] for s in new_samples]),
-            torch.stack([s[2] for s in new_samples]),
-            torch.stack([s[3] for s in new_samples]),
-            torch.stack([s[4] for s in new_samples]),
-        )
-
-        # Combine with prior train data
-        # TODO explore only using a batch of this and not the full training set
-        current_train_ds = ConcatDataset([current_train_ds, new_ds])
-        updated_train_dl = DataLoader(current_train_ds, batch_size=cfg.model.batch_size, shuffle=True)
+        test_dataset, updated_train_dl = update_dataset(uncertainties_c, selected_tuples, current_train_ds, test_dl, means_c, cfg)
 
         print("Retraining regression model on updated dataset...")
         for epoch in tqdm(range(cfg.model.epochs_regression)):

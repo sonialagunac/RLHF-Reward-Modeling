@@ -1,4 +1,4 @@
-from utils.utils import load_embeddings, eval_reward_bench, compute_variance
+from utils.utils import load_embeddings, eval_reward_bench, compute_stats
 import pandas as pd
 import numpy as np
 import wandb, datasets, torch
@@ -127,8 +127,7 @@ def validate_gating(gating_network, score_projection, beta_head_gate, val_dl, de
 
 
 def inference_active_learning(gating_network, score_projection, beta_head, beta_head_pref, test_dl, device):
-    all_uncertainties_p = []
-    all_uncertainties_c = []
+    all_means_c, all_means_p,  all_uncertainties_c, all_uncertainties_p = [], [], [], []
 
     for batch_idx, (pos, neg, pos_prompt, neg_prompt, _) in enumerate(test_dl):
         pos, neg = pos.to(device), neg.to(device)
@@ -139,7 +138,7 @@ def inference_active_learning(gating_network, score_projection, beta_head, beta_
             pos_out = score_projection(pos)  # shape: [B, C]
             neg_out = score_projection(neg)  # shape: [B, C]
             alpha_c, beta_c = beta_head(pos_out, neg_out)  # shape: [B, C]
-            var_c = compute_variance(alpha_c, beta_c)  # shape: [B, C]
+            mean_c, var_c = compute_stats(alpha_c, beta_c)  # shape: [B, C]
 
             # Preference-level predictions
             weights_pos = gating_network(pos_prompt)  # shape: [B, C]
@@ -149,17 +148,22 @@ def inference_active_learning(gating_network, score_projection, beta_head, beta_
             final_scores_neg = torch.sum(neg_out * weights_neg, dim=-1, keepdim=True)  # shape: [B, 1]
 
             alpha_p, beta_p = beta_head_pref(final_scores_pos, final_scores_neg)  # shape: [B, 1]
-            var_p = compute_variance(alpha_p, beta_p)  # shape: [B, 1]
+            mean_p, var_p = compute_stats(alpha_p, beta_p)  # shape: [B, 1]
 
         # Store
+        all_means_c.append(mean_c.cpu().numpy())  # [B, C]
+        all_means_p.append(mean_p.cpu().numpy())  # [B, 1]
         all_uncertainties_c.append(var_c.cpu().numpy())  # [B, C]
         all_uncertainties_p.append(var_p.cpu().numpy())  # [B, 1]
+        
 
     # Stack across batches
+    means_c = np.vstack(all_means_c)  # shape: [N, C]
+    means_p = np.vstack(all_means_p)  # shape: [N, 1]
     uncertainties_c = np.vstack(all_uncertainties_c)  # shape: [N, C]
     uncertainties_p = np.vstack(all_uncertainties_p)  # shape: [N, 1]
-
-    return uncertainties_p, uncertainties_c
+    
+    return means_c, means_p, uncertainties_c, uncertainties_p
 
 
 # ---------------------------

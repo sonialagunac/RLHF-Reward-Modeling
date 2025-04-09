@@ -22,3 +22,4 @@ min_rounds: 1.0
 max_iters: 5
 patience: 2
 n_samples: 10
+n_concepts: null # Number of concepts to prompt for labeling in active learning, if null all concepts are relabeled

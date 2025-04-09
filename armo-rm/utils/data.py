@@ -1,5 +1,9 @@
 from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler
 import numpy as np
+import torch
+from collections import defaultdict
+from torch.utils.data import ConcatDataset
+from torch.utils.data import DataLoader, TensorDataset, SubsetRandomSampler
 from safetensors.torch import load_file
 
 
@@ -87,3 +91,39 @@ def sanity_check_labels(concept_labels):
         print("All labels within [0, 1].")
 
     return concept_labels
+
+def update_dataset(uncertainties_c, selected_tuples, current_train_ds, test_dl, predicted_concept_labels, cfg):
+    
+    # Removing samples from test set
+    # Note: The samples we have already used are removed from the test set (Even if only some concepts were relabeled)
+    selected_sample_indices = set(sample_idx for sample_idx, _ in selected_tuples)
+    test_dataset = torch.utils.data.Subset(test_dl.dataset, list(set(np.arange(len(uncertainties_c))) - set(selected_sample_indices))) 
+    
+    # Adding labeled samples to training set
+    concept_selection_map = defaultdict(list)
+    for sample_idx, concept_idx in selected_tuples:
+        concept_selection_map[sample_idx].append(concept_idx)
+
+    # Extract new samples and update with new labels
+    new_samples = []
+    for sample_idx, concept_idxs in concept_selection_map.items():
+        pos_embeddings, neg_embeddings, pos_prompt_embeddings, neg_prompt_embeddings, concept_labels = test_dl.dataset[sample_idx] 
+        
+        # Make a copy and selectively relabel concept labels
+        new_label_c = torch.tensor(predicted_concept_labels[sample_idx]).clone()
+        new_label_c[concept_idxs] = concept_labels[concept_idxs]
+        new_samples.append((pos_embeddings, neg_embeddings, pos_prompt_embeddings, neg_prompt_embeddings, new_label_c))
+
+    new_ds = TensorDataset(
+        torch.stack([s[0] for s in new_samples]),
+        torch.stack([s[1] for s in new_samples]),
+        torch.stack([s[2] for s in new_samples]),
+        torch.stack([s[3] for s in new_samples]),
+        torch.stack([s[4] for s in new_samples]),
+    )
+
+    # Combine with prior train data
+    # TODO explore only using a batch of this and not the full training set
+    current_train_ds = ConcatDataset([current_train_ds, new_ds])
+    updated_train_dl = DataLoader(current_train_ds, batch_size=cfg.model.batch_size, shuffle=True)
+    return test_dataset, updated_train_dl
