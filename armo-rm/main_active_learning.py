@@ -74,7 +74,7 @@ def main(cfg: DictConfig):
             "score_projection": os.path.join(experiment_folder, paths_weights[0]),
             "gating_network": os.path.join(experiment_folder, paths_weights[2]),
             "beta_head": os.path.join(experiment_folder, paths_weights[1]),
-            "beta_head_pref": os.path.join(experiment_folder, paths_weights[]),
+            "beta_head_pref": os.path.join(experiment_folder, paths_weights[3]),
         }
         score_projection.load_state_dict(torch.load(model_ckpt_paths["score_projection"]))
         gating_network.load_state_dict(torch.load(model_ckpt_paths["gating_network"]))
