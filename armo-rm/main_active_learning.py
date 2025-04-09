@@ -86,51 +86,74 @@ def main(cfg: DictConfig):
     beta_head.eval()
     beta_head_pref.eval()
 
-    # TODO Do a loop so that one can repeat active learning multiple times
-    # Run active learning
-    uncertainties_p, uncertainties_c, all_indices = inference_active_learning(
-        gating_network, score_projection, beta_head, beta_head_pref, test_dl, device
-    )
+    # -----------------------------
+    # ACTIVE LEARNING LOOP
+    # -----------------------------
+    current_train_ds = train_dl.dataset
+    best_val_loss = validate_gating(gating_network, score_projection, beta_head_pref, val_dl, device, cfg.model)
 
-    # TODO do function so that you can select from the hydra configs what acq function to use
-    n_samples = cfg.get("n_samples", 10)
-    selected_indices = np.random.choice(all_indices, size=n_samples, replace=False)
+    patience_counter = 0
 
-    # Extract new samples
-    new_samples = [test_dl.dataset[idx] for idx in selected_indices]
+    for iteration in range(cfg.model.max_iters):
+        print(f"\n===== Active Learning Iteration {iteration+1} =====")
 
-    new_ds = TensorDataset(
-        torch.stack([s[0] for s in new_samples]),
-        torch.stack([s[1] for s in new_samples]),
-        torch.stack([s[2] for s in new_samples]),
-        torch.stack([s[3] for s in new_samples]),
-        torch.stack([s[4] for s in new_samples]),
-    )
+        uncertainties_p, uncertainties_c, all_indices = inference_active_learning(
+            gating_network, score_projection, beta_head, beta_head_pref, test_dl, device
+        )
 
-    # Combine with prior train data
-    # TODO explore only using a batch of this and not the full training set
-    updated_train_ds = ConcatDataset([train_dl.dataset, new_ds])
-    updated_train_dl = DataLoader(updated_train_ds, batch_size=cfg.model.batch_size, shuffle=True)
+        # TODO do function so that you can select from the hydra configs what acq function to use
+        n_samples = cfg.get("n_samples", 10)
+        selected_indices = np.random.choice(all_indices, size=n_samples, replace=False)
 
-    print("Retraining regression model on updated dataset...")
-    for epoch in tqdm(range(cfg.model.epochs_regression)):
-        train_regression(score_projection, beta_head, optimizer, updated_train_dl, device, epoch, cfg.model)
-    validate_regression(score_projection, beta_head, test_dl, device)
+        # Extract new samples
+        new_samples = [test_dl.dataset[idx] for idx in selected_indices]
 
-    # Save regression model
-    if cfg.store_weights:
-        torch.save(score_projection.state_dict(), os.path.join(experiment_folder, f"post_AL_{paths_weights[0]}"))
-        torch.save(beta_head.state_dict(), os.path.join(experiment_folder, f"post_AL_{paths_weights[1]}"))
+        new_ds = TensorDataset(
+            torch.stack([s[0] for s in new_samples]),
+            torch.stack([s[1] for s in new_samples]),
+            torch.stack([s[2] for s in new_samples]),
+            torch.stack([s[3] for s in new_samples]),
+            torch.stack([s[4] for s in new_samples]),
+        )
 
-    print("Retraining gating network...")
-    for epoch in tqdm(range(cfg.model.epochs_gating)):
-        train_gating(gating_network, score_projection, beta_head_pref, optimizer_gate, scheduler_gate, updated_train_dl, device, epoch, cfg.model)
-    validate_gating(gating_network, score_projection, beta_head_pref, test_dl, device, cfg.model)
+        # Combine with prior train data
+        # TODO explore only using a batch of this and not the full training set
+        current_train_ds = ConcatDataset([current_train_ds, new_ds])
+        updated_train_dl = DataLoader(current_train_ds, batch_size=cfg.model.batch_size, shuffle=True)
 
-    # Save gating model
-    if cfg.store_weights:
-        torch.save(gating_network.state_dict(), os.path.join(experiment_folder, f"post_AL_{paths_weights[2]}"))
-        torch.save(beta_head_pref.state_dict(), os.path.join(experiment_folder, f"post_AL_{paths_weights[3]}"))
+        print("Retraining regression model on updated dataset...")
+        for epoch in tqdm(range(cfg.model.epochs_regression)):
+            train_regression(score_projection, beta_head, optimizer, updated_train_dl, device, epoch, cfg.model)
+        validate_regression(score_projection, beta_head, val_dl, device)
+
+        # Save regression model
+        if cfg.store_weights:
+            torch.save(score_projection.state_dict(), os.path.join(experiment_folder, f"post_AL_{paths_weights[0]}"))
+            torch.save(beta_head.state_dict(), os.path.join(experiment_folder, f"post_AL_{paths_weights[1]}"))
+
+        print("Retraining gating network...")
+        for epoch in tqdm(range(cfg.model.epochs_gating)):
+            train_gating(gating_network, score_projection, beta_head_pref, optimizer_gate, scheduler_gate, updated_train_dl, device, epoch, cfg.model)
+        new_val_loss = validate_gating(gating_network, score_projection, beta_head_pref, val_dl, device, cfg.model)
+
+        # Save gating model
+        if cfg.store_weights:
+            torch.save(gating_network.state_dict(), os.path.join(experiment_folder, f"post_AL_{paths_weights[2]}"))
+            torch.save(beta_head_pref.state_dict(), os.path.join(experiment_folder, f"post_AL_{paths_weights[3]}"))
+
+        # Check for early stopping
+        improvement = best_val_loss - new_val_loss
+        print(f"Improvement: {improvement:.4f}") # Note the improvemnt for now is in the preference loss
+        if iteration + 1 >= cfg.model.min_rounds:
+            if improvement < cfg.model.min_improvement:
+                patience_counter += 1
+                print(f"Patience counter: {patience_counter}/{cfg.model.patience_limit}")
+                if patience_counter >= cfg.model.patience_limit:
+                    print("Stopping early due to lack of improvement.")
+                    break
+            else:
+                patience_counter = 0  # reset if improvement is good
+        best_val_loss = new_val_loss
 
     # Optionally run RewardBench evaluation
     if cfg.eval_reward_bench:

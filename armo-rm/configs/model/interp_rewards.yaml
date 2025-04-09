@@ -14,3 +14,9 @@ logit_scale: 1.0
 
 # Parameters for beta distribution
 eps: 1e-4 # Epsilon to avoid logs going to nan or inf
+
+# Parameters for active learning
+min_improvement: 0.0
+min_rounds: 1.0
+max_iters: 5
+patience: 2
