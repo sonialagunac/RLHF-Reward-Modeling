@@ -122,8 +122,13 @@ def update_dataset(uncertainties_c, selected_tuples, current_train_ds, test_dl, 
         torch.stack([s[4] for s in new_samples]),
     )
 
-    # Combine with prior train data
-    # TODO explore only using a batch of this and not the full training set
-    current_train_ds = ConcatDataset([current_train_ds, new_ds])
-    updated_train_dl = DataLoader(current_train_ds, batch_size=cfg.model.batch_size, shuffle=True)
+    # Create a replay buffer from the prior training data
+    replay_size = int(cfg.model.replay_ratio * len(current_train_ds))
+    replay_indices = torch.randperm(len(current_train_ds))[:replay_size]
+    replay_subset = torch.utils.data.Subset(current_train_ds, replay_indices)
+    
+    # Combine replay buffer with new samples
+    combined_ds = ConcatDataset([replay_subset, new_ds])
+    updated_train_dl = DataLoader(combined_ds, batch_size=cfg.model.batch_size, shuffle=True)
+    
     return test_dataset, updated_train_dl

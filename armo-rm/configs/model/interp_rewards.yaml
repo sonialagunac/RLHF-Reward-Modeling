@@ -23,3 +23,4 @@ max_iters: 5
 patience: 2
 n_samples: 10
 n_concepts: null # Number of concepts to prompt for labeling in active learning, if null all concepts are relabeled
+replay_ratio: 0.2  # % of previous training data retained per AL iteration and finetuning, if no buffer wanted set to 1
