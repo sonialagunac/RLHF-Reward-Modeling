@@ -127,38 +127,40 @@ def validate_gating(gating_network, score_projection, beta_head_gate, val_dl, de
 
 
 def inference_active_learning(gating_network, score_projection, beta_head, beta_head_pref, test_dl, device):
-    uncertainties_p = []
-    uncertainties_c = []
-    all_indices = []
+    all_uncertainties_p = []
+    all_uncertainties_c = []
 
-    # Inference on test set
-    for i, (pos, neg, pos_prompt, neg_prompt, y) in enumerate(test_dl):
-        pos, neg, pos_prompt, neg_prompt = pos.to(device), neg.to(device), pos_prompt.to(device), neg_prompt.to(device)
+    for batch_idx, (pos, neg, pos_prompt, neg_prompt, _) in enumerate(test_dl):
+        pos, neg = pos.to(device), neg.to(device)
+        pos_prompt, neg_prompt = pos_prompt.to(device), neg_prompt.to(device)
+
         with torch.no_grad():
-            pos_out = score_projection(pos)
-            neg_out = score_projection(neg)
-            alpha_c, beta_c = beta_head(pos_out, neg_out)
-            var_c = compute_variance(alpha_c, beta_c)
+            # Concept-level predictions
+            pos_out = score_projection(pos)  # shape: [B, C]
+            neg_out = score_projection(neg)  # shape: [B, C]
+            alpha_c, beta_c = beta_head(pos_out, neg_out)  # shape: [B, C]
+            var_c = compute_variance(alpha_c, beta_c)  # shape: [B, C]
 
-            weights_pos = gating_network(pos_prompt)
-            weights_neg = gating_network(neg_prompt)
-            concept_scores_pos = pos_out
-            concept_scores_neg = neg_out
+            # Preference-level predictions
+            weights_pos = gating_network(pos_prompt)  # shape: [B, C]
+            weights_neg = gating_network(neg_prompt)  # shape: [B, C]
 
-            final_scores_pos = (concept_scores_pos * weights_pos).sum(dim=-1, keepdim=True)
-            final_scores_neg = (concept_scores_neg * weights_neg).sum(dim=-1, keepdim=True)
+            final_scores_pos = torch.sum(pos_out * weights_pos, dim=-1, keepdim=True)  # shape: [B, 1]
+            final_scores_neg = torch.sum(neg_out * weights_neg, dim=-1, keepdim=True)  # shape: [B, 1]
 
-            alpha_p, beta_p = beta_head_pref(final_scores_pos, final_scores_neg)
-            var_p = compute_variance(alpha_p, beta_p)
+            alpha_p, beta_p = beta_head_pref(final_scores_pos, final_scores_neg)  # shape: [B, 1]
+            var_p = compute_variance(alpha_p, beta_p)  # shape: [B, 1]
 
-            uncertainties_p.append(var_p.cpu().numpy())
-            uncertainties_c.append(var_p.cpu().numpy())
-            all_indices.append(i)
+        # Store
+        all_uncertainties_c.append(var_c.cpu().numpy())  # [B, C]
+        all_uncertainties_p.append(var_p.cpu().numpy())  # [B, 1]
 
-    uncertainties_p = np.concatenate(uncertainties_p)
-    uncertainties_c = np.concatenate(uncertainties_c)
-    all_indices = np.array(all_indices)
-    return uncertainties_p, uncertainties_c, all_indices
+    # Stack across batches
+    uncertainties_c = np.vstack(all_uncertainties_c)  # shape: [N, C]
+    uncertainties_p = np.vstack(all_uncertainties_p)  # shape: [N, 1]
+
+    return uncertainties_p, uncertainties_c
+
 
 # ---------------------------
 # RewardBench Evaluation

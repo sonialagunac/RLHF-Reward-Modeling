@@ -13,7 +13,7 @@ from utils.training import (
     inference_active_learning, reward_bench_eval,
 )
 from utils.data import get_dataloaders
-
+from utils.acquisition import select_acquisition_indices
 
 @hydra.main(config_path="configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
@@ -90,6 +90,8 @@ def main(cfg: DictConfig):
     # ACTIVE LEARNING LOOP
     # -----------------------------
     current_train_ds = train_dl.dataset
+    test_dataset = test_dl.dataset 
+
     best_val_loss = validate_gating(gating_network, score_projection, beta_head_pref, val_dl, device, cfg.model)
 
     patience_counter = 0
@@ -97,16 +99,23 @@ def main(cfg: DictConfig):
     for iteration in range(cfg.model.max_iters):
         print(f"\n===== Active Learning Iteration {iteration+1} =====")
 
-        uncertainties_p, uncertainties_c, all_indices = inference_active_learning(
+        test_dl = DataLoader(test_dataset, batch_size=cfg.model.batch_size, shuffle=False)
+
+        uncertainties_p, uncertainties_c = inference_active_learning(
             gating_network, score_projection, beta_head, beta_head_pref, test_dl, device
         )
-
-        # TODO do function so that you can select from the hydra configs what acq function to use
-        n_samples = cfg.get("n_samples", 10)
-        selected_indices = np.random.choice(all_indices, size=n_samples, replace=False)
-
+        
+        # Select samples based on acquisition strategy
+        selected_indices = select_acquisition_indices(
+            strategy=cfg.model.strategy,
+            uncertainties_p=uncertainties_p,
+            uncertainties_c=uncertainties_c,
+            all_indices=np.arange(len(uncertainties_c)),
+            n_samples=cfg.model.n_samples
+        )
         # Extract new samples
         new_samples = [test_dl.dataset[idx] for idx in selected_indices]
+        test_dataset = torch.utils.data.Subset(test_dataset, list(set(np.arange(len(uncertainties_c))) - set(selected_indices)))
 
         new_ds = TensorDataset(
             torch.stack([s[0] for s in new_samples]),
