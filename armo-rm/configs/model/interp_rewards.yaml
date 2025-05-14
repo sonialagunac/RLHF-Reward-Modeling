@@ -2,10 +2,10 @@ defaults:
   - default  # Inherit base model/training setup
 
 #  Regression Model Config
-epochs_regression: 2
-
+epochs_regression: 50
+eval_every: 10 # Evaluate every n epochs
 # Gating Model Config
-epochs_gating: 2
+epochs_gating: 50
 n_hidden: 3 # Number of hidden layers in the gating network
 dropout: 0.2 # Dropout rate for gating network"
 hidden_dim: 1024 # Hidden dimension for gating network layers"
@@ -16,11 +16,11 @@ logit_scale: 1.0
 eps: 1e-4 # Epsilon to avoid logs going to nan or inf
 
 # Parameters for active learning
-strategy: "random"  # options: "random", "concept_entropy"
+strategy: "high_confusion"  # options: "random", "concept_entropy"
 min_improvement: 0.02
 min_rounds: 1.0
-max_iters: 5
+max_iters: 100
 patience: 2
-n_samples: 10
+n_samples: 100
 n_concepts: null # Number of concepts to prompt for labeling in active learning, if null all concepts are relabeled
 replay_ratio: 0.2  # % of previous training data retained per AL iteration and finetuning, if no buffer wanted set to 1

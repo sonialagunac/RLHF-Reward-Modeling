@@ -12,7 +12,7 @@ from models.networks import ScoreProjection, GatingNetwork, BetaHead
 # ---------------------------
 def init_wandb(cfg):
     wandb.init(
-        project="interpretable_rewards",
+        project=cfg.project_name,
         entity=cfg.wandb_entity,
         config=dict(cfg),
         dir=cfg.wandb_path
@@ -74,8 +74,9 @@ def get_models(cfg, input_dim, output_dim, device):
 
     # Initialize regression model + optimizer
     score_projection = ScoreProjection(input_dim, output_dim).to(device)
-    beta_head = BetaHead(output_dim).to(device)
-    reg_params = list(score_projection.parameters()) + list(beta_head.parameters())
+    # beta_head = BetaHead(output_dim).to(device)
+    # reg_params = list(score_projection.parameters()) + list(beta_head.parameters())
+    reg_params = list(score_projection.parameters())
     optimizer = torch.optim.AdamW(reg_params, lr=cfg.model.lr, weight_decay=cfg.model.weight_decay)
 
     # Initialize gating network + optimizer
@@ -89,9 +90,11 @@ def get_models(cfg, input_dim, output_dim, device):
         logit_scale=cfg.model.logit_scale,
     ).to(device)
 
-    beta_head_pref = BetaHead(1).to(device)
-    gate_params = list(gating_network.parameters()) + list(beta_head_pref.parameters())
+    # beta_head_pref = BetaHead(1).to(device)
+    # gate_params = list(gating_network.parameters()) + list(beta_head_pref.parameters())
+    gate_params = list(gating_network.parameters())
     optimizer_gate = torch.optim.AdamW(gate_params, lr=cfg.model.lr, weight_decay=cfg.model.weight_decay)
     scheduler_gate = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_gate, T_max=cfg.model.epochs_gating)
 
-    return score_projection, beta_head, optimizer, gating_network, beta_head_pref, optimizer_gate, scheduler_gate
+    # return score_projection, beta_head, optimizer, gating_network, beta_head_pref, optimizer_gate, scheduler_gate
+    return score_projection, optimizer, gating_network, optimizer_gate, scheduler_gate

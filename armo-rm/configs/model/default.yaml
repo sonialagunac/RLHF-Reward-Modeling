@@ -1,3 +1,4 @@
 lr: 0.001
 weight_decay: 0.01
 batch_size: 1024
+num_initial_samples: 1000

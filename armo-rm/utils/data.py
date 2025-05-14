@@ -77,7 +77,7 @@ def get_dataloaders(cfg):
     val_dl = make_loader(cfg, full_dataset, val_sampler)
     test_dl = make_loader(cfg, full_dataset, test_sampler)
 
-    return train_dl, val_dl, test_dl, pos_embeddings.shape[1], concept_labels.shape[1], concepts
+    return train_dl, val_dl, test_dl, pos_embeddings.shape[1], concept_labels.shape[1], concepts, full_dataset, train_indices, val_indices, test_indices
 
     
 def sanity_check_labels(concept_labels):

@@ -34,6 +34,14 @@ def main(cfg: DictConfig):
 
     # Load dataset
     train_dl, val_dl, _, input_dim, output_dim, concepts = get_dataloaders(cfg)
+    train_dl, val_dl, test_dl, input_dim, output_dim, concepts, full_dataset, train_indices, val_indices, test_indices = get_dataloaders(cfg)
+
+    # Initialize with small seed labeled subset
+    initial_size = cfg.model.num_initial_samples  # e.g. 1000
+    initial_indices = np.random.choice(train_indices, size=initial_size, replace=False)
+    current_train_ds = torch.utils.data.Subset(full_dataset, initial_indices)
+    updated_train_dl = DataLoader(current_train_ds, batch_size=cfg.model.batch_size, shuffle=True)
+
 
     # Initialize regression model + optimizer
     score_projection = ScoreProjection(input_dim, output_dim).to(device)
